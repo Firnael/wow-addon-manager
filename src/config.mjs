@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 export const UA = 'wow-addon-manager/1.0';
-const DIR = process.env.WAM_HOME || join(homedir(), '.config', 'wam');
+export const DIR = process.env.WAM_HOME || join(homedir(), '.config', 'wam');
 const CONFIG = join(DIR, 'config.json');
 const STATE = join(DIR, 'state.json');
 const DEFAULT_ADDONS = '/Applications/World of Warcraft/_forever_/Interface/AddOns';

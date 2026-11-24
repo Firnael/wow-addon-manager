@@ -91,12 +91,13 @@ try {
     if (!key) throw new Error('clé vide, rien enregistré');
     // Tested before it is saved, so a bad paste never replaces a working key.
     process.env.CURSEFORGE_API_KEY = key;
-    const { search } = await import('../src/curse.mjs');
-    const n = await search('leatrix').then((r) => r.length, (e) => {
+    // Tested on a project sheet (/mods/search answers 403 to console keys, see src/catalog.mjs).
+    const { mod } = await import('../src/curse.mjs');
+    const m = await mod(298842).catch((e) => {
       throw new Error(`clé refusée (${e.message}), rien enregistré. ${key.length} caractères lus, commence par « ${key.slice(0, 7)} ».`);
     });
     saveConfig({ apiKey: key });
-    console.log(`Clé enregistrée et testée (${n} résultats pour « leatrix »).`);
+    console.log(`Clé enregistrée et testée (fiche « ${m.name} » lue).`);
   } else {
     console.log('wam [check | update | key]  (sans argument : interface)');
   }

@@ -4,6 +4,7 @@
 import { execFile } from 'node:child_process';
 import * as core from './core.mjs';
 import * as curse from './curse.mjs';
+import * as catalog from './catalog.mjs';
 
 const out = process.stdout;
 const ESC = '\x1b[';
@@ -100,7 +101,9 @@ async function add(text) {
   ui.busy++; draw();
   try {
     if (cfId || cfSlug) {
-      const m = cfId ? await curse.mod(cfId).catch(() => ({ id: cfId })) : await curse.bySlug(cfSlug);
+      await catalog.load();
+      const m = cfId ? await curse.mod(cfId).catch(() => ({ id: cfId })) : catalog.bySlug(cfSlug);
+      if (!m) throw new Error(`« ${cfSlug} » absent du catalogue Forever : coller plutôt son numéro de projet (page CurseForge, « Project ID »)`);
       say(`Installation de ${m.name ?? m.id}…`);
       const done = await installCurse(m.id, m.name);
       say(`Installé : ${done.join(', ')}. /reload en jeu.`);
@@ -119,17 +122,33 @@ async function add(text) {
   ui.addons.forEach((a) => { if (!ui.status.has(a.name)) checkOne(a); });
 }
 
-async function runSearch() {
+// Search runs on the local catalog (catalog.mjs). It is built on first use, refreshed when a
+// week old; results follow the build as it grows.
+function ensureCatalog() {
+  if (!curse.hasKey() || catalog.isBuilding() || catalog.fresh()) return;
+  const first = !catalog.size();
+  catalog.build((n) => { ui.catalogMsg = `${first ? 'Construction' : 'Mise à jour'} du catalogue : ${n} addons…`; refreshSearch(); })
+    .then((cat) => { ui.catalogMsg = `Catalogue : ${cat.mods.length} addons Forever.`; refreshSearch(); })
+    .catch((e) => { ui.catalogMsg = c.red(`Catalogue : ${e.message}`); draw(); });
+}
+
+function refreshSearch() {
+  const s = ui.search;
+  if (s.done) s.results = catalog.search(s.query);
+  draw();
+}
+
+function runSearch() {
   const s = ui.search;
   if (!s.query.trim()) return;
   if (!curse.hasKey()) return say(c.yellow('La recherche demande une clé CurseForge : quitter et lancer `wam key`.'));
-  s.loading = true; s.input = false; s.sel = 0; s.top = 0; draw();
-  try { s.results = await curse.search(s.query.trim()); s.done = true; say(''); }
-  catch (e) { s.results = []; say(c.red(`Recherche : ${e.message}`)); }
-  s.loading = false; draw();
+  s.input = false; s.sel = 0; s.top = 0; s.done = true;
+  s.results = catalog.search(s.query);
+  ensureCatalog();
+  draw();
 }
 
-const visibleResults = () => ui.search.results.filter((r) => ui.search.all || r.forever);
+const visibleResults = () => ui.search.results;
 
 function pageOf(a) {
   if (a?.source?.curse) return `https://www.curseforge.com/projects/${a.source.curse}`;
@@ -196,14 +215,14 @@ function render() {
   } else {
     const s = ui.search;
     const cursor = s.input ? c.inv(' ') : '';
-    L.push(` Rechercher : ${s.query}${cursor}${s.loading ? c.dim('  recherche…') : ''}`);
+    L.push(` Rechercher : ${s.query}${cursor}  ${c.dim(ui.catalogMsg ?? (catalog.size() ? `catalogue : ${catalog.size()} addons Forever` : ''))}`);
     const res = visibleResults();
     const have = new Set(ui.addons.map((a) => a.key));
     const rows = res.map((r) => {
-      const tags = [r.forever ? '' : c.dim('pas Forever'), have.has(`curse:${r.id}`) ? c.green('installé') : ''].filter(Boolean).join(' ');
-      return ` ${fit(r.name, 34)} ${c.dim(fit(fmtN(r.downloads), 7))} ${c.dim(fit(r.author, 16))} ${tags}`;
+      const tags = have.has(`curse:${r.id}`) ? c.green('installé') : '';
+      return ` ${fit(r.name, 40)} ${c.dim(fit(fmtN(r.downloads), 7))} ${c.dim(fit(r.author, 18))} ${tags}`;
     });
-    if (!rows.length && s.done && !s.loading) rows.push(c.dim(s.results.length ? ` aucun résultat Forever (f pour tout voir, ${s.results.length})` : ' aucun résultat'));
+    if (!rows.length && s.done) rows.push(c.dim(catalog.isBuilding() ? ' rien pour l\'instant, le catalogue se construit…' : ' aucun résultat'));
     scrollTo(s, res.length || 1, bodyH - 1);
     L.push(...list(rows, s.input ? -1 : s.sel, s.top, bodyH - 1, W));
     const r = res[s.sel];
@@ -220,7 +239,7 @@ function render() {
     : ui.view === 'installed'
       ? '↑↓ choisir · u mettre à jour · U tout · r vérifier · a ajouter · d supprimer · o page · Tab recherche · q quitter'
       : ui.search.input ? 'Entrée chercher · ↓ résultats · Tab installés · Échap quitter la saisie'
-        : '↑↓ choisir · Entrée installer · o page · f Forever/tout · / nouvelle recherche · Tab installés · q quitter';
+        : '↑↓ choisir · Entrée installer · o page · / nouvelle recherche · R rafraîchir le catalogue · Tab installés · q quitter';
   L.push(c.dim(fit(` ${keys}`, W)));
   return L.slice(0, H);
 }
@@ -276,7 +295,7 @@ function onKey(data) {
     else if (k === 'pgup') s.sel -= 10;
     else if (k === 'pgdown') s.sel += 10;
     else if (k === '/') { s.input = true; s.query = ''; }
-    else if (k === 'f') { s.all = !s.all; s.sel = 0; s.top = 0; }
+    else if (k === 'R' && !catalog.isBuilding()) { catalog.build((n) => { ui.catalogMsg = `Mise à jour du catalogue : ${n} addons…`; draw(); }).then((cat) => { ui.catalogMsg = `Catalogue : ${cat.mods.length} addons Forever.`; refreshSearch(); }, (e) => { ui.catalogMsg = c.red(`Catalogue : ${e.message}`); draw(); }); }
     else if (k === 'o' && r) open(r.url);
     else if ((k === 'enter' || k === 'i') && r) {
       ui.prompt = { label: `Installer ${r.name}${r.forever ? '' : ' (aucun fichier Forever récent annoncé)'} ?`, confirm: async () => {
@@ -329,5 +348,7 @@ export async function run() {
   out.on('resize', () => { out.write(`${ESC}2J`); draw(); });
   await rescan();
   if (!curse.hasKey()) ui.msg = c.dim('Pas de clé CurseForge : la recherche est désactivée (`wam key`).');
+  await catalog.load();
+  ensureCatalog();
   checkAll();
 }

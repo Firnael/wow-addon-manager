@@ -1,8 +1,8 @@
 // CurseForge. Two APIs:
 // - the website's (www.curseforge.com/api/v1/mods/<id>/files, .../download): no key, enough to
 //   find and download a project's latest file. Its search and project pages answer 403.
-// - the official one (api.curseforge.com/v1, header x-api-key): search, project details and
-//   file dependencies. Free key from console.curseforge.com, stored by `wam key`.
+// - the official one (api.curseforge.com/v1, header x-api-key): project details, file
+//   dependencies and the featured lists the catalog is built from (search itself is refused). Free key from console.curseforge.com, stored by `wam key`.
 
 import { config } from './config.mjs';
 import { UA } from './config.mjs';
@@ -38,23 +38,24 @@ export async function latestFile(id) {
   };
 }
 
-const shape = (m) => ({
+export const shape = (m) => ({
   id: m.id, slug: m.slug, name: m.name, summary: m.summary, downloads: m.downloadCount,
   author: m.authors?.[0]?.name, updated: m.dateReleased ?? m.dateModified, url: m.links?.websiteUrl,
   forever: (m.latestFilesIndexes ?? []).some((f) => isForever(f.gameVersion)),
 });
 
-// Sorted by popularity. `forever` tells whether a recent file targets 1.60.x.
-export async function search(text) {
-  const q = new URLSearchParams({ gameId: WOW, searchFilter: text, sortField: 2, sortOrder: 'desc', pageSize: 50 });
-  return (await api(`/mods/search?${q}`)).data.map(shape);
-}
-
-export async function bySlug(slug) {
-  const q = new URLSearchParams({ gameId: WOW, slug });
-  const m = (await api(`/mods/search?${q}`)).data[0];
-  if (!m) throw new Error(`aucun projet « ${slug} »`);
-  return shape(m);
+// /v1/mods/search answers 403 for console keys: see catalog.mjs. Featured skips excludedIds.
+const FOREVER_TYPE = 88568; // gameVersionTypeId of WoW Forever (1.60.x)
+export async function featured(excludedModIds) {
+  const key = config().apiKey;
+  if (!key) throw new Error('pas de clé CurseForge : lancer `wam key`');
+  const r = await fetch(`${API}/mods/featured`, {
+    method: 'POST',
+    headers: { 'user-agent': UA, accept: 'application/json', 'content-type': 'application/json', 'x-api-key': key },
+    body: JSON.stringify({ gameId: WOW, gameVersionTypeId: FOREVER_TYPE, excludedModIds }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status} sur /mods/featured`);
+  return (await r.json()).data;
 }
 
 export async function mod(id) {
