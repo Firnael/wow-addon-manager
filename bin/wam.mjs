@@ -57,13 +57,27 @@ function askKey() {
     let key = '';
     process.stdin.setRawMode(true);
     process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (ch) => {
-      if (ch === '\x03') process.exit(130);
-      if (ch === '\r' || ch === '\n') { process.stdin.setRawMode(false); process.stdin.pause(); process.stdout.write('\n'); resolve(key.trim()); }
-      else if (ch === '\x7f') key = key.slice(0, -1);
-      else key += ch;
+    // A paste arrives as one chunk, maybe wrapped in bracketed-paste markers: go char by char.
+    process.stdin.on('data', (chunk) => {
+      for (const ch of chunk.replace(/\x1b\[20[01]~/g, '')) {
+        if (ch === '\x03') process.exit(130);
+        if (ch === '\r' || ch === '\n') {
+          if (!key) continue; // a newline copied before the key
+          process.stdin.setRawMode(false); process.stdin.pause(); process.stdout.write('\n');
+          return resolve(key);
+        }
+        if (ch === '\x7f') key = key.slice(0, -1);
+        else if (ch > ' ' && ch <= '~') key += ch;
+      }
     });
   });
+}
+
+// `echo "$CF_KEY" | wam key` also works.
+async function pipedKey() {
+  let s = '';
+  for await (const chunk of process.stdin) s += chunk;
+  return s.trim();
 }
 
 const cmd = process.argv[2];
@@ -73,12 +87,15 @@ try {
   else if (cmd === 'check') await plain(false);
   else if (cmd === 'update') await plain(true);
   else if (cmd === 'key') {
-    if (!process.stdin.isTTY) throw new Error('à lancer dans un terminal');
-    const key = await askKey();
+    const key = process.stdin.isTTY ? await askKey() : await pipedKey();
     if (!key) throw new Error('clé vide, rien enregistré');
-    saveConfig({ apiKey: key });
+    // Tested before it is saved, so a bad paste never replaces a working key.
+    process.env.CURSEFORGE_API_KEY = key;
     const { search } = await import('../src/curse.mjs');
-    const n = (await search('leatrix')).length;
+    const n = await search('leatrix').then((r) => r.length, (e) => {
+      throw new Error(`clé refusée (${e.message}), rien enregistré. ${key.length} caractères lus, commence par « ${key.slice(0, 7)} ».`);
+    });
+    saveConfig({ apiKey: key });
     console.log(`Clé enregistrée et testée (${n} résultats pour « leatrix »).`);
   } else {
     console.log('wam [check | update | key]  (sans argument : interface)');

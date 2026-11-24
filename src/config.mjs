@@ -18,9 +18,8 @@ export function config() {
   if (!cache) {
     const file = existsSync(CONFIG) ? JSON.parse(readFileSync(CONFIG, 'utf8')) : {};
     cache = { addonsDir: DEFAULT_ADDONS, ...file };
-    if (process.env.CURSEFORGE_API_KEY) cache.apiKey = process.env.CURSEFORGE_API_KEY;
   }
-  return cache;
+  return process.env.CURSEFORGE_API_KEY ? { ...cache, apiKey: process.env.CURSEFORGE_API_KEY } : cache;
 }
 
 export function saveConfig(patch) {
