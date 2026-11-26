@@ -90,3 +90,7 @@ La release vient du workflow `.github/workflows/release.yml` de chaque addon : p
 - `src/tui.mjs` : l'interface (stdin brut, codes ANSI, écran alternatif), avec un écran d'accueil d'1,6 s (une touche le passe) et le dégradé « retro » d'azotui, en 24 bits si `COLORTERM` le dit, sinon en 256 couleurs.
 
 Pour tester sans toucher au vrai dossier : `WAM_HOME=/tmp/w` avec un `config.json` dont `addonsDir` pointe ailleurs.
+
+## Licence
+
+MIT, voir [LICENSE](LICENSE).
