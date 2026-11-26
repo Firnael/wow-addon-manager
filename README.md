@@ -55,6 +55,6 @@ La release vient du workflow `.github/workflows/release.yml` de chaque addon : p
 - `src/core.mjs` : lecture du dossier AddOns, comparaison des versions, installation (dossier remplacé en bloc, ancien remis en place en cas d'échec), suppression.
 - `src/curse.mjs`, `src/github.mjs` : les sources.
 - `src/catalog.mjs` : le catalogue local et sa recherche.
-- `src/tui.mjs` : l'interface (stdin brut, codes ANSI, écran alternatif).
+- `src/tui.mjs` : l'interface (stdin brut, codes ANSI, écran alternatif), avec un écran d'accueil d'1,6 s (une touche le passe) et le dégradé « retro » d'azotui, en 24 bits si `COLORTERM` le dit, sinon en 256 couleurs.
 
 Pour tester sans toucher au vrai dossier : `WAM_HOME=/tmp/w` avec un `config.json` dont `addonsDir` pointe ailleurs.

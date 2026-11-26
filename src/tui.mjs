@@ -14,6 +14,46 @@ const c = {
   cyan: (s) => `${ESC}36m${s}${ESC}39m`, inv: (s) => `${ESC}7m${s}${ESC}27m`,
 };
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+// ---- look ---------------------------------------------------------------------------------
+// The "retro" gradient (indigo -> pink -> gold), in 24-bit colour when the terminal says so,
+// else the nearest of the 256-colour cube.
+const TRUE = /truecolor|24bit/i.test(process.env.COLORTERM ?? '');
+const RETRO = ['#3f51b1', '#5a55ae', '#7b5fac', '#8f6aae', '#a86aa4', '#cc6b8e', '#f18271', '#f3a469', '#f7c978']
+  .map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+const cube = ([r, g, b]) => 16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51) + Math.round(b / 51);
+const fg = (rgb) => (TRUE ? `${ESC}38;2;${rgb.join(';')}m` : `${ESC}38;5;${cube(rgb)}m`);
+const bg = (rgb) => (TRUE ? `${ESC}48;2;${rgb.join(';')}m` : `${ESC}48;5;${cube(rgb)}m`);
+const RESET = `${ESC}0m`;
+// Colour at t in [0, 1] along the gradient.
+function at(t) {
+  const x = Math.min(1, Math.max(0, t)) * (RETRO.length - 1), i = Math.min(RETRO.length - 2, Math.floor(x)), f = x - i;
+  return RETRO[i].map((v, k) => Math.round(v + (RETRO[i + 1][k] - v) * f));
+}
+// Text painted along the gradient; phase shifts it (ping-pong, so it never jumps).
+function grad(lines, phase = 0) {
+  const w = Math.max(...lines.map((l) => [...l].length)) + lines.length * 2;
+  return lines.map((l, row) => [...l].map((ch, col) => {
+    if (ch === ' ') return ch;
+    const t = (col + row * 2) / w + phase;
+    return fg(at(1 - Math.abs((t % 2) - 1))) + ch;
+  }).join('') + RESET);
+}
+const accent = (s) => fg(RETRO[7]) + s + RESET;
+const soft = (s) => fg(RETRO[3]) + s + RESET;
+const SEL = bg([52, 46, 92]);
+const vlen = (s) => [...strip(s)].length;
+
+const BIG = [
+  '██╗    ██╗ █████╗ ███╗   ███╗',
+  '██║    ██║██╔══██╗████╗ ████║',
+  '██║ █╗ ██║███████║██╔████╔██║',
+  '██║███╗██║██╔══██║██║╚██╔╝██║',
+  '╚███╔███╔╝██║  ██║██║ ╚═╝ ██║',
+  ' ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝     ╚═╝',
+];
+const SMALL = ['█ █ █ ▄▀█ █▀▄▀█', '▀▄▀▄▀ █▀█ █ ▀ █'];
+const VERSION = '1.2.0';
 const fit = (s, w) => { s = String(s ?? ''); return s.length > w ? s.slice(0, Math.max(0, w - 1)) + '…' : s.padEnd(w); };
 const fmtN = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n ?? '');
 const day = (d) => (d ? String(d).slice(0, 10) : '');
@@ -24,6 +64,7 @@ const ui = {
   search: { query: '', input: true, results: [], sel: 0, top: 0, all: false, loading: false, done: false },
   prompt: null, // { label, value, submit(value) } or { label, confirm(yes) }
   msg: '', busy: 0,
+  splash: true, phase: 0,
 };
 
 function say(m) { ui.msg = m; draw(); }
@@ -137,7 +178,7 @@ function list(rows, sel, top, height, width) {
   const lines = [];
   for (let i = top; i < Math.min(rows.length, top + height); i++) {
     const text = rows[i];
-    lines.push(i === sel ? c.inv(fit(strip(text), width)) : text);
+    lines.push(i === sel ? `${SEL}${ESC}1m${accent('▸')}${SEL}${ESC}1m${fit(strip(text).slice(1), width - 1)}${RESET}` : text);
   }
   while (lines.length < height) lines.push('');
   return lines;
@@ -152,10 +193,13 @@ function scrollTo(obj, len, height) {
 function render() {
   const W = out.columns || 100, H = out.rows || 30;
   const L = [];
-  const tab = (k, label, on) => (on ? c.inv(` ${k} ${label} `) : c.dim(` ${k} ${label} `));
-  L.push(`${c.bold(' WoW Forever · addons')}  ${tab(1, 'Installés', ui.view === 'installed')}${tab(2, 'Rechercher', ui.view === 'search')}`);
-  L.push(c.dim('─'.repeat(W)));
-  const bodyH = H - 8;
+  const tab = (k, label, on) => (on ? `${bg(RETRO[2])}${ESC}1m ${k} ${label} ${RESET}` : c.dim(` ${k} ${label} `));
+  const logo = grad(SMALL, ui.phase);
+  const right = (left, r) => left + ' '.repeat(Math.max(1, W - vlen(left) - vlen(r) - 1)) + r;
+  L.push(right(` ${grad(['WoW Forever'])[0]} ${c.dim('· addon manager')}`, logo[0]));
+  L.push(right(` ${tab(1, 'Installés', ui.view === 'installed')}${tab(2, 'Rechercher', ui.view === 'search')}`, logo[1]));
+  L.push(soft('─'.repeat(W)));
+  const bodyH = H - 9;
 
   if (ui.view === 'installed') {
     const rows = ui.addons.map((a) => {
@@ -165,17 +209,18 @@ function render() {
     scrollTo(ui, rows.length, bodyH);
     L.push(...list(rows, ui.sel, ui.top, bodyH, W));
     const a = ui.addons[ui.sel];
-    L.push(c.dim('─'.repeat(W)));
+    L.push(soft('─'.repeat(W)));
     if (a) {
       const src = a.local ? `lien vers ${a.target}${a.repo ? ` · l : passer à la release de ${a.repo}` : ''}` : a.own ? `release de GitHub ${a.source.github} · l : revenir au lien ${a.installed.link}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'source inconnue : a pour l\'ajouter';
-      L.push(fit(` ${c.bold(a.title)}  ${c.dim(a.dirs.join(', '))}`, W + 20));
+      const cut = (t, w) => (t.length > w ? t.slice(0, Math.max(0, w - 1)) + '…' : t);
+      L.push(` ${accent(c.bold(cut(a.title, W - 4)))}  ${c.dim(cut(a.dirs.join(', '), Math.max(0, W - a.title.length - 4)))}`);
       L.push(fit(` ${a.notes ?? ''}`, W));
       L.push(c.dim(fit(` ${src}${a.installed?.at ? ` · installé le ${a.installed.at}` : ''}`, W)));
     } else L.push('', '', '');
   } else {
     const s = ui.search;
     const cursor = s.input ? c.inv(' ') : '';
-    L.push(` Rechercher : ${s.query}${cursor}  ${c.dim(ui.catalogMsg ?? (catalog.size() ? `catalogue : ${catalog.size()} addons Forever` : ''))}`);
+    L.push(` ${accent('⌕')} ${s.query}${cursor}  ${c.dim(ui.catalogMsg ?? (catalog.size() ? `catalogue : ${catalog.size()} addons Forever` : ''))}`);
     const res = visibleResults();
     const have = new Set(ui.addons.map((a) => a.key));
     const rows = res.map((r) => {
@@ -186,9 +231,9 @@ function render() {
     scrollTo(s, res.length || 1, bodyH - 1);
     L.push(...list(rows, s.input ? -1 : s.sel, s.top, bodyH - 1, W));
     const r = res[s.sel];
-    L.push(c.dim('─'.repeat(W)));
+    L.push(soft('─'.repeat(W)));
     if (r && !s.input) {
-      L.push(` ${c.bold(r.name)}  ${c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''} · ${day(r.updated)}`)}`);
+      L.push(` ${accent(c.bold(r.name))}  ${c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''} · ${day(r.updated)}`)}`);
       L.push(fit(` ${r.summary ?? ''}`, W));
       L.push(c.dim(fit(` ${r.url ?? ''}`, W)));
     } else L.push('', '', '');
@@ -200,7 +245,31 @@ function render() {
       ? '↑↓ choisir · u mettre à jour · U tout · r vérifier · a ajouter · d supprimer · l lien/release · o page · Tab recherche · q quitter'
       : ui.search.input ? 'Entrée chercher · ↓ résultats · Tab installés · Échap quitter la saisie'
         : '↑↓ choisir · Entrée installer · o page · / nouvelle recherche · R rafraîchir le catalogue · Tab installés · q quitter';
-  L.push(c.dim(fit(` ${keys}`, W)));
+  L.push(hints(keys, W));
+  return L.slice(0, H);
+}
+
+// "↑↓ choisir · u mettre à jour" -> key in gold, label dimmed, cut to the width.
+function hints(keys, W) {
+  let line = ' ', used = 1;
+  for (const part of keys.split(' · ')) {
+    const sp = part.indexOf(' '), k = part.slice(0, sp), label = part.slice(sp + 1);
+    const n = k.length + label.length + 4;
+    if (used + n > W) break;
+    line += `${accent(k)} ${c.dim(label)}   `; used += n;
+  }
+  return line;
+}
+
+// Splash: the big logo, its gradient sliding, over the first moments while addons load.
+function splash() {
+  const W = out.columns || 100, H = out.rows || 30;
+  const art = grad(BIG, ui.phase);
+  const sub = [`${c.dim('World of Warcraft')} ${grad(['Forever'], ui.phase)[0]} ${c.dim('· addon manager')}`, '', c.dim(`v${VERSION}`)];
+  const block = [...art, '', ...sub];
+  const top = Math.max(0, Math.floor((H - block.length) / 2));
+  const L = Array(top).fill('');
+  for (const l of block) L.push(' '.repeat(Math.max(0, Math.floor((W - vlen(l)) / 2))) + l);
   return L.slice(0, H);
 }
 
@@ -210,7 +279,7 @@ function draw() {
   pending = true;
   setImmediate(() => {
     pending = false;
-    out.write(`${ESC}H` + render().map((l) => l + `${ESC}K`).join('\r\n') + `${ESC}J`);
+    out.write(`${ESC}H` + (ui.splash ? splash() : render()).map((l) => l + `${ESC}K`).join('\r\n') + `${ESC}J`);
   });
 }
 
@@ -221,6 +290,7 @@ const KEYS = { '\x1b[A': 'up', '\x1b[B': 'down', '\x1b[5~': 'pgup', '\x1b[6~': '
 function onKey(data) {
   const k = KEYS[data] ?? data;
   if (k === 'ctrl-c') return quit();
+  if (ui.splash) return endSplash();
 
   if (ui.prompt) {
     const p = ui.prompt;
@@ -293,6 +363,8 @@ function onKey(data) {
 
 // ---- lifecycle ----------------------------------------------------------------------------
 
+let endSplash = () => {};
+
 function quit() {
   out.write(`${ESC}?25h${ESC}?1049l`);
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
@@ -307,6 +379,11 @@ export async function run() {
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', onKey);
   out.on('resize', () => { out.write(`${ESC}2J`); draw(); });
+  // Splash for 1.6 s (any key skips it) while the addons are read; the gradient slides.
+  const anim = setInterval(() => { ui.phase += 0.04; draw(); }, 50);
+  endSplash = () => { if (!ui.splash) return; ui.splash = false; clearInterval(anim); ui.phase = 0; out.write(`${ESC}2J`); draw(); };
+  setTimeout(() => endSplash(), 1600);
+  draw();
   await rescan();
   if (!curse.hasKey()) ui.msg = c.dim('Pas de clé CurseForge : la recherche est désactivée (`wam key`).');
   await catalog.load();
