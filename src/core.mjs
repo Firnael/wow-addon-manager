@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as curse from './curse.mjs';
 import * as github from './github.mjs';
+import * as catalog from './catalog.mjs';
 import { config, loadState, saveState } from './config.mjs';
 
 export { UA } from './config.mjs';
@@ -181,6 +182,60 @@ export async function remove(addon) {
     delete state[addon.key];
     await saveState(state);
   }
+}
+
+// Installs a CurseForge project and its required dependencies that are missing (the
+// dependency lookup needs the API key). Returns the titles installed. onStep(text) narrates.
+export async function installCurse(id, title, { onStep = () => {}, seen = new Set(), have } = {}) {
+  if (seen.has(id)) return [];
+  seen.add(id);
+  have ??= new Set((await scan()).map((a) => a.key));
+  const remote = await curse.latestFile(id);
+  const dirs = await install({ curse: id }, remote, { title });
+  const done = [title ?? dirs[0]];
+  have.add(`curse:${id}`);
+  if (!curse.hasKey()) return done;
+  for (const dep of await curse.requiredDeps(id, remote.fileId)) {
+    if (have.has(`curse:${dep}`)) continue;
+    const m = await curse.mod(dep).catch(() => null);
+    onStep(`Dépendance : ${m?.name ?? dep}…`);
+    done.push(...await installCurse(dep, m?.name, { onStep, seen, have }));
+  }
+  return done;
+}
+
+// "Add" accepts a CurseForge link or project number, or a GitHub owner/repo (or its URL).
+// Returns the titles (CurseForge) or folders (GitHub) installed.
+export async function add(text, { onStep = () => {} } = {}) {
+  text = String(text ?? '').trim();
+  const gh = text.match(/^(?:https?:\/\/github\.com\/)?([\w.-]+\/[\w.-]+?)(?:\.git|\/.*)?$/);
+  const cfSlug = text.match(/curseforge\.com\/wow\/addons\/([\w-]+)/)?.[1];
+  const cfId = text.match(/^\d+$/) ? Number(text) : Number(text.match(/curseforge\.com\/projects\/(\d+)/)?.[1]) || null;
+  if (cfId || cfSlug) {
+    await catalog.load();
+    const m = cfId ? await curse.mod(cfId).catch(() => ({ id: cfId })) : catalog.bySlug(cfSlug);
+    if (!m) throw new Error(`« ${cfSlug} » absent du catalogue Forever : donner plutôt son numéro de projet (page CurseForge, « Project ID »)`);
+    onStep(`Installation de ${m.name ?? m.id}…`);
+    return installCurse(m.id, m.name, { onStep });
+  }
+  if (gh && !text.includes(' ')) {
+    const src = { github: gh[1], asset: 'forever.*\\.zip$' };
+    onStep(`Recherche d'une release Forever sur ${gh[1]}…`);
+    const remote = await latest(src);
+    const dirs = await install(src, remote);
+    return dirs.map((d) => `${d} (${remote.name})`);
+  }
+  throw new Error('format non reconnu : lien CurseForge, numéro de projet ou owner/repo GitHub');
+}
+
+// An addon picked by folder name or title, case-insensitive.
+export const find = (addons, name) => addons.find((a) => [a.name, a.title].some((s) => s?.toLowerCase() === String(name).toLowerCase()));
+
+export function pageOf(a) {
+  if (a?.source?.curse) return `https://www.curseforge.com/projects/${a.source.curse}`;
+  if (a?.source?.github) return `https://github.com/${a.source.github}`;
+  if (a?.repo) return `https://github.com/${a.repo}`;
+  return null;
 }
 
 // Runs fn over items with at most n at once, in order of completion.

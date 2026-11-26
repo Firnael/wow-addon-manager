@@ -3,13 +3,20 @@
 Une interface en terminal pour mettre à jour, chercher, ajouter et supprimer les addons de WoW Forever, sans l'app CurseForge (qui marche mal derrière Zscaler). Node ≥ 24, aucune dépendance.
 
 ```sh
-wam           # l'interface
-wam check     # liste les addons et les mises à jour disponibles
-wam update    # met à jour tout ce qui est en retard
-wam key       # enregistre la clé API CurseForge (saisie masquée)
-wam release ProcMeter   # un de nos addons : lien -> dernière release GitHub
-wam dev ProcMeter       # retour au lien vers le repo, pour travailler dessus
+wam                        # l'interface
+wam check [addon…]         # versions et mises à jour disponibles
+wam update [addon…]        # met à jour ce qui est en retard (tout, ou les addons nommés)
+wam add <source…>          # lien CurseForge, numéro de projet ou owner/repo GitHub (+ dépendances)
+wam remove [-y] <addon…>   # supprime, après confirmation sauf avec -y
+wam search <mots…>         # catalogue Forever : numéro, nom, téléchargements, auteur
+wam catalog                # reconstruit le catalogue
+wam open <addon>           # ouvre la page de l'addon
+wam release <addon…>       # un de nos addons : lien -> dernière release GitHub
+wam dev <addon…>           # retour au lien vers le repo, pour travailler dessus
+wam key                    # enregistre la clé API CurseForge (saisie masquée)
 ```
+
+`<addon>` est le nom du dossier ou le titre, sans tenir compte de la casse. Chaque action de l'interface a sa commande ; `wam help` les liste.
 
 `wam` est un lien de `~/.local/bin/wam` vers `bin/wam.mjs`, qui se lance avec `node --use-system-ca` (le certificat de Zscaler est dans le trousseau macOS, pas dans celui de Node).
 

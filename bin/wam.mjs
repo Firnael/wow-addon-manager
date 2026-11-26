@@ -1,17 +1,29 @@
 #!/usr/bin/env -S node --use-system-ca
 // wam: WoW Forever addon manager.
-//   wam           TUI (installed addons, updates, search, add, remove)
-//   wam check     list addons and available updates
-//   wam update    update every third-party addon that is behind
-//   wam key       store the CurseForge API key (asked without echo)
-//   wam release <addon…>   one of our symlinked addons -> its latest GitHub release
-//   wam dev <addon…>       back to the symlink into its git repo
+// Every TUI action has a command (see USAGE below); with no argument, the TUI.
 
+import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { config, saveConfig, loadState, saveState } from '../src/config.mjs';
 import * as core from '../src/core.mjs';
+import * as catalog from '../src/catalog.mjs';
+import * as curse from '../src/curse.mjs';
+
+const USAGE = `wam                        interface (sans argument)
+wam check [addon…]         versions et mises à jour disponibles
+wam update [addon…]        met à jour ce qui est en retard (tout, ou les addons nommés)
+wam add <source…>          installe : lien CurseForge, numéro de projet ou owner/repo GitHub
+wam remove [-y] <addon…>   supprime (demande confirmation sans -y)
+wam search <mots…>         cherche dans le catalogue Forever (clé requise)
+wam catalog                reconstruit le catalogue
+wam open <addon>           ouvre la page de l'addon
+wam release <addon…>       un de nos addons : lien -> dernière release GitHub
+wam dev <addon…>           retour au lien vers le repo
+wam key                    enregistre la clé API CurseForge (saisie masquée)
+
+<addon> : nom du dossier ou titre, sans tenir compte de la casse.`;
 
 // One-time import of the state left by the old AddOns/update-addons.mjs script.
 async function migrate() {
@@ -29,10 +41,18 @@ async function migrate() {
   await rm(join(config().addonsDir, 'update-addons.mjs'), { force: true });
 }
 
-async function plain(update) {
+// Addons named on the command line (all when none); an unknown name is an error.
+async function pick(names) {
   const addons = await core.scan();
+  if (!names.length) return addons;
+  return names.map((n) => core.find(addons, n) ?? { title: n, missing: true });
+}
+
+async function plain(update, names) {
+  const addons = await pick(names);
   let behind = 0, failed = 0;
   for (const a of addons) {
+    if (a.missing) { failed++; console.log(`✗  ${a.title} : introuvable dans AddOns`); continue; }
     if (a.local) { console.log(`   ${a.title} ${a.version ?? ''} (perso, lien${a.repo ? '' : ', sans remote GitHub'})`); continue; }
     if (!a.source) { console.log(`?  ${a.title} ${a.version ?? ''} : source inconnue`); continue; }
     try {
@@ -58,7 +78,7 @@ async function switchMode(names, dev) {
   const addons = await core.scan();
   let ok = 0;
   for (const n of names) {
-    const a = addons.find((x) => [x.name, x.title].some((s) => s?.toLowerCase() === n.toLowerCase()));
+    const a = core.find(addons, n);
     try {
       if (!a) throw new Error('introuvable dans AddOns');
       if (dev) { await core.toDev(a); console.log(`✓  ${a.title} : lien vers ${a.installed.link}`); }
@@ -67,6 +87,76 @@ async function switchMode(names, dev) {
     } catch (e) { process.exitCode = 1; console.log(`✗  ${a?.title ?? n} : ${e.message}`); }
   }
   if (ok) console.log('/reload en jeu pour les charger.');
+}
+
+async function add(sources) {
+  if (!sources.length) throw new Error('wam add <lien CurseForge | numéro de projet | owner/repo GitHub>…');
+  let ok = 0;
+  for (const src of sources) {
+    try { console.log(`✓  ${(await core.add(src, { onStep: (m) => console.log(`   ${m}`) })).join(', ')}`); ok++; }
+    catch (e) { process.exitCode = 1; console.log(`✗  ${src} : ${e.message}`); }
+  }
+  if (ok) console.log('/reload en jeu pour les charger.');
+}
+
+function confirm(question) {
+  return new Promise((resolve) => {
+    process.stdout.write(`${question} [o/N] `);
+    process.stdin.setEncoding('utf8');
+    process.stdin.once('data', (d) => { process.stdin.pause(); resolve(/^[oy]/i.test(d.trim())); });
+  });
+}
+
+async function remove(args) {
+  const yes = args.includes('-y');
+  const names = args.filter((a) => a !== '-y');
+  if (!names.length) throw new Error('wam remove [-y] <addon…>');
+  for (const a of await pick(names)) {
+    try {
+      if (a.missing) throw new Error('introuvable dans AddOns');
+      if (a.local) throw new Error('addon perso (lien) : à retirer à la main');
+      if (!yes) {
+        if (!process.stdin.isTTY) throw new Error('pas de terminal pour confirmer : ajouter -y');
+        if (!(await confirm(`Supprimer ${a.title} (${a.dirs.join(', ')}) ?`))) { console.log(`   ${a.title} gardé`); continue; }
+      }
+      await core.remove(a);
+      console.log(`✓  ${a.title} supprimé (${a.dirs.join(', ')})`);
+    } catch (e) { process.exitCode = 1; console.log(`✗  ${a.title} : ${e.message}`); }
+  }
+}
+
+// Builds or refreshes the catalog when needed, progress on stderr so stdout stays clean.
+async function ensureCatalog(force) {
+  if (!curse.hasKey()) throw new Error('la recherche demande une clé CurseForge : wam key');
+  await catalog.load();
+  if (!force && catalog.fresh()) return;
+  const first = !catalog.size();
+  const tty = process.stderr.isTTY;
+  if (!tty) process.stderr.write(`${first ? 'Construction' : 'Mise à jour'} du catalogue…\n`);
+  await catalog.build((n) => { if (tty) process.stderr.write(`\r${first ? 'Construction' : 'Mise à jour'} du catalogue : ${n} addons…`); });
+  process.stderr.write(`${tty ? '\r' : ''}Catalogue : ${catalog.size()} addons Forever.${tty ? ' '.repeat(20) : ''}\n`);
+}
+
+async function search(words) {
+  if (!words.length) throw new Error('wam search <mots…>');
+  await ensureCatalog(false);
+  const res = catalog.search(words.join(' '));
+  if (!res.length) return console.log('Aucun résultat.');
+  const have = new Set((await core.scan()).map((a) => a.key));
+  const n = (x) => (x >= 1e6 ? `${(x / 1e6).toFixed(1)}M` : x >= 1e3 ? `${Math.round(x / 1e3)}k` : String(x ?? ''));
+  for (const r of res.slice(0, 25)) {
+    console.log(`${String(r.id).padStart(8)}  ${r.name.slice(0, 40).padEnd(40)} ${n(r.downloads).padStart(6)}  ${(r.author ?? '').slice(0, 18).padEnd(18)} ${have.has(`curse:${r.id}`) ? 'installé' : ''}`);
+  }
+  console.log(`${res.length > 25 ? `${res.length} résultats, 25 premiers. ` : ''}Installer : wam add <numéro>`);
+}
+
+async function openPage(names) {
+  if (names.length !== 1) throw new Error('wam open <addon>');
+  const [a] = await pick(names);
+  const url = a.missing ? null : core.pageOf(a);
+  if (!url) throw new Error(a.missing ? `${a.title} : introuvable dans AddOns` : `${a.title} : pas de page connue`);
+  execFile('open', [url]);
+  console.log(url);
 }
 
 // Reads the key without echoing it, so it never lands in the terminal scrollback.
@@ -99,13 +189,18 @@ async function pipedKey() {
   return s.trim();
 }
 
-const cmd = process.argv[2];
+const [cmd, ...args] = process.argv.slice(2);
 try {
   await migrate();
   if (!cmd) await (await import('../src/tui.mjs')).run();
-  else if (cmd === 'check') await plain(false);
-  else if (cmd === 'update') await plain(true);
-  else if (cmd === 'release' || cmd === 'dev') await switchMode(process.argv.slice(3), cmd === 'dev');
+  else if (cmd === 'check') await plain(false, args);
+  else if (cmd === 'update') await plain(true, args);
+  else if (cmd === 'add') await add(args);
+  else if (cmd === 'remove' || cmd === 'rm') await remove(args);
+  else if (cmd === 'search') await search(args);
+  else if (cmd === 'catalog') await ensureCatalog(true);
+  else if (cmd === 'open') await openPage(args);
+  else if (cmd === 'release' || cmd === 'dev') await switchMode(args, cmd === 'dev');
   else if (cmd === 'key') {
     const key = process.stdin.isTTY ? await askKey() : await pipedKey();
     if (!key) throw new Error('clé vide, rien enregistré');
@@ -119,7 +214,8 @@ try {
     saveConfig({ apiKey: key });
     console.log(`Clé enregistrée et testée (fiche « ${m.name} » lue).`);
   } else {
-    console.log('wam [check | update | key | release <addon…> | dev <addon…>]  (sans argument : interface)');
+    console.log(USAGE);
+    if (!['help', '-h', '--help'].includes(cmd)) process.exitCode = 1;
   }
 } catch (e) {
   console.error(`wam : ${e.message}`);

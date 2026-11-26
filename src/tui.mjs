@@ -75,62 +75,12 @@ async function updateAll() {
   say(`${ok}/${todo.length} mis à jour. /reload en jeu pour les charger.`);
 }
 
-// Installs a CurseForge project and its required dependencies that are missing.
-async function installCurse(id, title, seen = new Set()) {
-  if (seen.has(id)) return [];
-  seen.add(id);
-  const remote = await curse.latestFile(id);
-  const dirs = await core.install({ curse: id }, remote, { title });
-  const done = [title ?? dirs[0]];
-  const have = new Set(ui.addons.map((a) => a.key));
-  for (const dep of await curse.requiredDeps(id, remote.fileId)) {
-    if (have.has(`curse:${dep}`)) continue;
-    const m = await curse.mod(dep).catch(() => null);
-    say(`Dépendance : ${m?.name ?? dep}…`);
-    done.push(...await installCurse(dep, m?.name, seen));
-  }
-  return done;
-}
+const installCurse = (id, title) => core.installCurse(id, title, { onStep: say, have: new Set(ui.addons.map((a) => a.key)) });
 
-// Own addons: symlink into the git repo <-> latest GitHub release.
-async function toggleLink(a) {
-  if (!a.local && !a.own) return say('l ne sert qu\'à nos addons (lien ou release perso).');
-  say(a.local ? `Passage de ${a.title} à sa release…` : `Retour de ${a.title} au lien…`);
-  try {
-    if (a.local) { const r = await core.toRelease(a); say(`${a.title} : release ${r.version}. /reload en jeu.`); }
-    else { await core.toDev(a); say(`${a.title} : lien vers ${a.installed.link}. /reload en jeu.`); }
-  } catch (e) { say(c.red(`Échec : ${e.message}`)); }
-  ui.status.delete(a.name);
-  await rescan();
-  const b = ui.addons.find((x) => x.name === a.name);
-  if (b) checkOne(b);
-}
-
-// "Add" accepts a CurseForge link or project number, or a GitHub owner/repo (or its URL).
 async function add(text) {
-  text = text.trim();
-  const gh = text.match(/^(?:https?:\/\/github\.com\/)?([\w.-]+\/[\w.-]+?)(?:\.git|\/.*)?$/);
-  const cfSlug = text.match(/curseforge\.com\/wow\/addons\/([\w-]+)/)?.[1];
-  const cfId = text.match(/^\d+$/) ? Number(text) : Number(text.match(/curseforge\.com\/projects\/(\d+)/)?.[1]) || null;
   ui.busy++; draw();
-  try {
-    if (cfId || cfSlug) {
-      await catalog.load();
-      const m = cfId ? await curse.mod(cfId).catch(() => ({ id: cfId })) : catalog.bySlug(cfSlug);
-      if (!m) throw new Error(`« ${cfSlug} » absent du catalogue Forever : coller plutôt son numéro de projet (page CurseForge, « Project ID »)`);
-      say(`Installation de ${m.name ?? m.id}…`);
-      const done = await installCurse(m.id, m.name);
-      say(`Installé : ${done.join(', ')}. /reload en jeu.`);
-    } else if (gh && !text.includes(' ')) {
-      const src = { github: gh[1], asset: 'forever.*\\.zip$' };
-      say(`Recherche d'une release Forever sur ${gh[1]}…`);
-      const remote = await core.latest(src);
-      const dirs = await core.install(src, remote);
-      say(`Installé : ${dirs.join(', ')} (${remote.name}). /reload en jeu.`);
-    } else {
-      say('Format non reconnu : lien CurseForge, numéro de projet ou owner/repo GitHub.');
-    }
-  } catch (e) { say(c.red(`Échec : ${e.message}`)); }
+  try { say(`Installé : ${(await core.add(text, { onStep: say })).join(', ')}. /reload en jeu.`); }
+  catch (e) { say(c.red(`Échec : ${e.message}`)); }
   ui.busy--;
   await rescan();
   ui.addons.forEach((a) => { if (!ui.status.has(a.name)) checkOne(a); });
@@ -164,11 +114,7 @@ function runSearch() {
 
 const visibleResults = () => ui.search.results;
 
-function pageOf(a) {
-  if (a?.source?.curse) return `https://www.curseforge.com/projects/${a.source.curse}`;
-  if (a?.source?.github) return `https://github.com/${a.source.github}`;
-  return null;
-}
+const pageOf = core.pageOf;
 const open = (url) => url && execFile('open', [url]);
 
 // ---- drawing ------------------------------------------------------------------------------
