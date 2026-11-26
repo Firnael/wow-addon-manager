@@ -93,17 +93,22 @@ function sample(img, x0, y0, x1, y1) {
   return a ? [Math.round(r / a), Math.round(g / a), Math.round(bl / a), a / n] : [0, 0, 0, 0];
 }
 
-// Lines of half-block cells, at most maxW cells wide and maxH lines high (2 pixels a line).
+// Lines of half-block cells filling a fixed size x size pixel box (size/2 lines): the image
+// keeps its proportions and is centred, so every logo takes the same room.
 // fg(rgb) / bg(rgb) give the escape for a colour, reset clears both.
-export function render(img, maxW, maxH, { fg, bg, reset }) {
-  const scale = Math.min(1, maxW / img.w, (maxH * 2) / img.h);
-  const w = Math.max(1, Math.round(img.w * scale)), h = Math.max(2, Math.round(img.h * scale));
+export function render(img, size, { fg, bg, reset }) {
+  const scale = Math.min(size / img.w, size / img.h);
+  const w = Math.max(1, Math.round(img.w * scale)), h = Math.max(1, Math.round(img.h * scale));
+  const ox = Math.floor((size - w) / 2), oy = Math.floor((size - h) / 2) & ~1; // even: whole cells
   const sx = img.w / w, sy = img.h / h;
-  const px = (x, y) => (y >= h ? [0, 0, 0, 0] : sample(img, x * sx, y * sy, (x + 1) * sx, (y + 1) * sy));
+  const px = (x, y) => {
+    x -= ox; y -= oy;
+    return x < 0 || y < 0 || x >= w || y >= h ? [0, 0, 0, 0] : sample(img, x * sx, y * sy, (x + 1) * sx, (y + 1) * sy);
+  };
   const lines = [];
-  for (let y = 0; y < h; y += 2) {
+  for (let y = 0; y < size; y += 2) {
     let line = '';
-    for (let x = 0; x < w; x++) {
+    for (let x = 0; x < size; x++) {
       const t = px(x, y), b = px(x, y + 1), ton = t[3] > 0.5, bon = b[3] > 0.5;
       if (ton && bon) line += fg(t) + bg(b) + '▀';
       else if (ton) line += reset + fg(t) + '▀';

@@ -225,34 +225,39 @@ function logoKey(x) {
 }
 const addonLogo = (a) => logoKey(a.source?.curse ? { curse: a.source.curse } : { github: a.source?.github ?? a.repo });
 const paint = { fg: (p) => fg(p.slice(0, 3)), bg: (p) => bg(p.slice(0, 3)), reset: RESET };
-function logoLines(ref, w, h) {
-  if (!ref || w < 4 || h < 2) return [];
-  const img = logos.get(ref.key, ref.url, draw);
-  if (img === undefined) return [c.dim('chargement du logo…')];
-  return img ? logos.render(img, Math.min(64, w), Math.min(32, h), paint) : [];
+// Logo box at the top of the panel: 64 px when the panel has room for it and ~14 lines of
+// text, else 32, else 16. It depends only on the window, so it stays put from addon to addon;
+// a missing or loading logo keeps the same room, so the text never moves either.
+const logoSize = (w, h) => [64, 32, 16].find((n) => n <= w && n / 2 + 14 <= h) ?? 0;
+function logoBox(ref, w, h) {
+  const size = logoSize(w, h);
+  if (!size) return [];
+  const img = ref ? logos.get(ref.key, ref.url, draw) : null;
+  const lines = img ? logos.render(img, size, paint)
+    : [...Array(size / 2 - 1).fill(''), c.dim(img === undefined ? 'chargement du logo…' : 'pas de logo')];
+  return [...lines, ''];
 }
 
 // Right-hand panel for the selected installed addon / search result.
 function panelInstalled(a, w, h) {
   if (!a) return [];
   const src = a.local ? `Lien vers ${a.target}` : a.own ? `Release GitHub ${a.source.github}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'Source inconnue : a pour l\'ajouter';
-  const L = [...wrap(a.title, w, 2).map((l) => accent(c.bold(l))), c.dim(a.dirs.join(', ')), ''];
+  const L = [...logoBox(addonLogo(a), w, h), ...wrap(a.title, w, 2).map((l) => accent(c.bold(l))), c.dim(a.dirs.join(', ')), ''];
   L.push(...wrap(a.notes, w, 4), '');
   for (const l of wrap(src, w, 2)) L.push(soft(l));
   if (a.version) L.push(c.dim(`Version ${a.version}`));
   if (a.installed?.at) L.push(c.dim(`Installé le ${a.installed.at}`));
   if (a.local && a.repo) L.push(c.dim(`l : passer à la release de ${a.repo}`));
   if (a.own) L.push(c.dim('l : revenir au lien'));
-  L.push('');
-  return [...L, ...logoLines(addonLogo(a), w, h - L.length)];
+  return L;
 }
 
 function panelSearch(r, w, h) {
   if (!r) return [];
-  const L = [...wrap(r.name, w, 2).map((l) => accent(c.bold(l))), c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''}`), c.dim(`Mis à jour le ${day(r.updated)}`), ''];
+  const L = [...logoBox(logoKey({ curse: r.id }), w, h), ...wrap(r.name, w, 2).map((l) => accent(c.bold(l))), c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''}`), c.dim(`Mis à jour le ${day(r.updated)}`), ''];
   L.push(...wrap(r.summary, w, 5), '');
-  if (r.url) L.push(soft(r.url.replace('https://www.', '')), '');
-  return [...L, ...logoLines(logoKey({ curse: r.id }), w, h - L.length)];
+  if (r.url) L.push(soft(r.url.replace('https://www.', '')));
+  return L;
 }
 
 function render() {
