@@ -153,6 +153,7 @@ async function search(words) {
 async function openPage(names) {
   if (names.length !== 1) throw new Error('wam open <addon>');
   const [a] = await pick(names);
+  await catalog.load();
   const url = a.missing ? null : core.pageOf(a);
   if (!url) throw new Error(a.missing ? `${a.title} : introuvable dans AddOns` : `${a.title} : pas de page connue`);
   execFile('open', [url]);

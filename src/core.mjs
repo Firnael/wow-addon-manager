@@ -232,7 +232,8 @@ export async function add(text, { onStep = () => {} } = {}) {
 export const find = (addons, name) => addons.find((a) => [a.name, a.title].some((s) => s?.toLowerCase() === String(name).toLowerCase()));
 
 export function pageOf(a) {
-  if (a?.source?.curse) return `https://www.curseforge.com/projects/${a.source.curse}`;
+  // The project's own page when the catalog knows it (load it first), else the id redirect.
+  if (a?.source?.curse) return catalog.byId(a.source.curse)?.url ?? `https://www.curseforge.com/projects/${a.source.curse}`;
   if (a?.source?.github) return `https://github.com/${a.source.github}`;
   if (a?.repo) return `https://github.com/${a.repo}`;
   return null;
