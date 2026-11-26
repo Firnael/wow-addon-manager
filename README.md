@@ -56,7 +56,7 @@ La release vient du workflow `.github/workflows/release.yml` de chaque addon : p
 - `src/core.mjs` : lecture du dossier AddOns, comparaison des versions, installation (dossier remplacé en bloc, ancien remis en place en cas d'échec), suppression.
 - `src/curse.mjs`, `src/github.mjs` : les sources.
 - `src/catalog.mjs` : le catalogue local et sa recherche.
-- `src/logo.mjs` : les logos du panneau de droite (logo CurseForge, sinon l'avatar du propriétaire GitHub), convertis par `sips` (macOS) en BMP de 64 px au plus, dessinés en demi-blocs colorés dans un carré fixe en haut du panneau (64, 32 ou 16 px selon la fenêtre) et gardés dans `logos/`.
+- `src/logo.mjs` : les logos du panneau de droite (logo CurseForge, sinon l'avatar du propriétaire GitHub), convertis par `sips` (macOS) en BMP de 96 px au plus, dessinés en demi-blocs colorés dans un carré fixe en haut du panneau (le plus grand qui laisse 10 lignes de texte, jusqu'à 96 px) et gardés dans `logos/`.
 - `src/tui.mjs` : l'interface (stdin brut, codes ANSI, écran alternatif), avec un écran d'accueil d'1,6 s (une touche le passe) et le dégradé « retro » d'azotui, en 24 bits si `COLORTERM` le dit, sinon en 256 couleurs.
 
 Pour tester sans toucher au vrai dossier : `WAM_HOME=/tmp/w` avec un `config.json` dont `addonsDir` pointe ailleurs.

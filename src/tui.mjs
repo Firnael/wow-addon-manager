@@ -225,10 +225,13 @@ function logoKey(x) {
 }
 const addonLogo = (a) => logoKey(a.source?.curse ? { curse: a.source.curse } : { github: a.source?.github ?? a.repo });
 const paint = { fg: (p) => fg(p.slice(0, 3)), bg: (p) => bg(p.slice(0, 3)), reset: RESET };
-// Logo box at the top of the panel: 64 px when the panel has room for it and ~14 lines of
-// text, else 32, else 16. It depends only on the window, so it stays put from addon to addon;
-// a missing or loading logo keeps the same room, so the text never moves either.
-const logoSize = (w, h) => [64, 32, 16].find((n) => n <= w && n / 2 + 14 <= h) ?? 0;
+// Logo box at the top of the panel: as big as the panel allows while leaving 10 lines of text,
+// up to 96 px, in steps of 4. It depends only on the window, so it stays put from addon to
+// addon; a missing or loading logo keeps the same room, so the text never moves either.
+function logoSize(w, h) {
+  const n = Math.min(96, w, 2 * (h - 10));
+  return n >= 16 ? n - (n % 4) : 0;
+}
 function logoBox(ref, w, h) {
   const size = logoSize(w, h);
   if (!size) return [];

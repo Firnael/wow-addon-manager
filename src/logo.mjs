@@ -1,8 +1,8 @@
 // Addon logos as blocks of colour: each terminal cell shows two pixels stacked ("▀", top
 // pixel in the foreground colour, bottom one in the background), so pixels come out square.
 //
-// No image library: macOS `sips` turns the PNG/JPEG into a BMP at most 64 px wide or high,
-// which is read here. Kept in ~/.config/wam/logos/<key>.bin (w, h, then RGBA), or an empty
+// No image library: macOS `sips` turns the PNG/JPEG into a BMP at most MAX px wide or high,
+// which is read here. Kept in ~/.config/wam/logos/<key>-<px>.bin (w, h, then RGBA), or an empty
 // file when the addon has no logo, so each is fetched once.
 
 import { execFile } from 'node:child_process';
@@ -15,10 +15,10 @@ import { DIR, UA } from './config.mjs';
 
 const run = promisify(execFile);
 const CACHE = join(DIR, 'logos');
-const MAX = 64;
+const MAX = 96;
 const mem = new Map(); // key -> image | null (none) | 'loading'
 
-const file = (key) => join(CACHE, `${key.replace(/[^\w.-]/g, '_')}.bin`);
+const file = (key) => join(CACHE, `${key.replace(/[^\w.-]/g, '_')}-${MAX}.bin`);
 
 // The logo for key if known: an image, null when there is none, undefined while it loads.
 // resolveUrl() gives its URL (or null); onReady() runs once it is loaded.
