@@ -1,0 +1,22 @@
+{
+  "name": "wow-addon-manager",
+  "version": "1.0.0",
+  "description": "Gestionnaire d'addons WoW Forever en terminal, sans l'app CurseForge",
+  "type": "module",
+  "bin": {
+    "wam": "bin/wam.mjs"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": "github:Firnael/wow-addon-manager",
+  "license": "MIT",
+  "dependencies": {
+    "jpeg-js": "^0.4.4",
+    "pngjs": "^7.0.0"
+  }
+}

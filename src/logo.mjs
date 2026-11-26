@@ -1,22 +1,22 @@
 // Addon logos as blocks of colour: each terminal cell shows two pixels stacked ("▀", top
 // pixel in the foreground colour, bottom one in the background), so pixels come out square.
 //
-// No image library: macOS `sips` turns the PNG/JPEG into a BMP at most MAX px wide or high,
-// which is read here. Kept in ~/.config/wam/logos/<key>-<px>.bin (w, h, then RGBA), or an empty
-// file when the addon has no logo, so each is fetched once.
+// PNG and JPEG are decoded in plain JS (pngjs, jpeg-js: no native code, same on every OS),
+// then shrunk here to at most MAX px wide or high. Kept in ~/.config/wam/logos/<key>-<px>.bin
+// (w, h, then RGBA), or an empty file when the addon has no logo (or one in another format),
+// so each is fetched once.
 
-import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
+import jpeg from 'jpeg-js';
+import pngjs from 'pngjs';
 import { DIR, UA } from './config.mjs';
 
-const run = promisify(execFile);
 const CACHE = join(DIR, 'logos');
 const MAX = 96;
 const mem = new Map(); // key -> image | null (none) | 'loading'
+
 
 const file = (key) => join(CACHE, `${key.replace(/[^\w.-]/g, '_')}-${MAX}.bin`);
 
@@ -39,42 +39,34 @@ async function load(key, resolveUrl) {
   if (url) {
     const r = await fetch(url, { headers: { 'user-agent': UA } });
     if (!r.ok) throw new Error(`logo : HTTP ${r.status}`); // not cached: retried next launch
-    img = await convert(Buffer.from(await r.arrayBuffer()));
+    img = convert(Buffer.from(await r.arrayBuffer()));
   }
   mkdirSync(CACHE, { recursive: true });
   await writeFile(f, img ? encode(img) : Buffer.alloc(0));
   return img;
 }
 
-async function convert(bytes) {
-  const tmp = await mkdtemp(join(tmpdir(), 'wam-logo-'));
-  try {
-    await writeFile(join(tmp, 'in'), bytes);
-    await run('sips', ['-s', 'format', 'bmp', '-Z', String(MAX), join(tmp, 'in'), '--out', join(tmp, 'out.bmp')]);
-    return readBmp(await readFile(join(tmp, 'out.bmp')));
-  } finally {
-    await rm(tmp, { recursive: true, force: true });
-  }
+// { w, h, px } (RGBA) from PNG or JPEG bytes, null for any other format (WebP, GIF…).
+function convert(b) {
+  let img;
+  if (b[0] === 0x89 && b.toString('latin1', 1, 4) === 'PNG') img = pngjs.PNG.sync.read(b);
+  else if (b[0] === 0xff && b[1] === 0xd8) img = jpeg.decode(b, { useTArray: true, formatAsRGBA: true, maxMemoryUsageInMB: 64 });
+  else return null;
+  return shrink({ w: img.width, h: img.height, px: new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.length) });
 }
 
-// Uncompressed 24- or 32-bit BMP (what sips writes), bottom-up or top-down.
-function readBmp(b) {
-  if (b.toString('latin1', 0, 2) !== 'BM') throw new Error('pas un BMP');
-  const off = b.readUInt32LE(10), w = b.readInt32LE(18), hh = b.readInt32LE(22), bpp = b.readUInt16LE(28);
-  if (bpp !== 24 && bpp !== 32) throw new Error(`BMP ${bpp} bits`);
-  const h = Math.abs(hh), stride = Math.ceil((bpp * w) / 32) * 4, n = bpp / 8;
-  const px = new Uint8Array(w * h * 4);
-  let anyAlpha = false;
+// Down to MAX px on the longer side, each pixel the average of those it covers.
+function shrink(img) {
+  const scale = Math.min(1, MAX / Math.max(img.w, img.h));
+  if (scale === 1) return img;
+  const w = Math.max(1, Math.round(img.w * scale)), h = Math.max(1, Math.round(img.h * scale));
+  const sx = img.w / w, sy = img.h / h, px = new Uint8Array(w * h * 4);
   for (let y = 0; y < h; y++) {
-    const row = off + (hh < 0 ? y : h - 1 - y) * stride;
     for (let x = 0; x < w; x++) {
-      const i = row + x * n, o = (y * w + x) * 4;
-      px[o] = b[i + 2]; px[o + 1] = b[i + 1]; px[o + 2] = b[i];
-      px[o + 3] = n === 4 ? b[i + 3] : 255;
-      if (n === 4 && b[i + 3]) anyAlpha = true;
+      const [r, g, b, a] = sample(img, x * sx, y * sy, (x + 1) * sx, (y + 1) * sy);
+      px.set([r, g, b, Math.round(a)], (y * w + x) * 4);
     }
   }
-  if (n === 4 && !anyAlpha) for (let o = 3; o < px.length; o += 4) px[o] = 255; // alpha unused
   return { w, h, px };
 }
 
