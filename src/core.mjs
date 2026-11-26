@@ -31,10 +31,14 @@ async function readToc(dir) {
   let files;
   try { files = (await readdir(dir)).filter((f) => f.endsWith('.toc')); } catch { return null; }
   const name = basename(dir);
-  const toc = files.find((f) => f === `${name}.toc`) ?? files.find((f) => /_(Forever|Camelot|Vanilla)\.toc$/i.test(f)) ?? files[0];
+  // What the Forever client loads: its own .toc first (Questie_Forever, QuestieTrace-Forever),
+  // then the generic one, then another classic flavour.
+  const toc = files.find((f) => /[_-]Forever\.toc$/i.test(f)) ?? files.find((f) => f === `${name}.toc`)
+    ?? files.find((f) => /[_-](Camelot|Vanilla)\.toc$/i.test(f)) ?? files[0];
   if (!toc) return null;
   const text = await readFile(join(dir, toc), 'utf8');
-  const tag = (k) => text.match(new RegExp(`^## ${k}:\\s*(.+?)\\s*$`, 'mi'))?.[1];
+  // [ \t] and not \s: an empty tag must not run on into the next line.
+  const tag = (k) => text.match(new RegExp(`^## ${k}:[ \\t]*(.*?)[ \\t\\r]*$`, 'mi'))?.[1] || undefined;
   const title = tag('Title')?.replace(/\|c[0-9a-f]{8}|\|r/gi, '').trim();
   return { version: tag('Version'), title, notes: tag('Notes'), curse: Number(tag('X-Curse-Project-ID')) || null };
 }
