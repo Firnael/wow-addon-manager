@@ -1,11 +1,11 @@
-#!/usr/bin/env -S node --use-system-ca
+#!/usr/bin/env node
 // wam: WoW Forever addon manager.
 // Every TUI action has a command (see USAGE below); with no argument, the TUI.
 
-import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { openUrl, useSystemCA } from '../src/platform.mjs';
 import { config, saveConfig, loadState, saveState } from '../src/config.mjs';
 import * as core from '../src/core.mjs';
 import * as catalog from '../src/catalog.mjs';
@@ -22,6 +22,8 @@ wam open <addon>           ouvre la page de l'addon
 wam release <addon…>       un de nos addons : lien -> dernière release GitHub
 wam dev <addon…>           retour au lien vers le repo
 wam key                    enregistre la clé API CurseForge (saisie masquée)
+wam dir [chemin]           affiche ou règle le dossier AddOns
+wam version                version de wam
 
 <addon> : nom du dossier ou titre, sans tenir compte de la casse.`;
 
@@ -156,7 +158,7 @@ async function openPage(names) {
   await catalog.load();
   const url = a.missing ? null : core.pageOf(a);
   if (!url) throw new Error(a.missing ? `${a.title} : introuvable dans AddOns` : `${a.title} : pas de page connue`);
-  execFile('open', [url]);
+  openUrl(url);
   console.log(url);
 }
 
@@ -176,7 +178,7 @@ function askKey() {
           process.stdin.setRawMode(false); process.stdin.pause(); process.stdout.write('\n');
           return resolve(key);
         }
-        if (ch === '\x7f') key = key.slice(0, -1);
+        if (ch === '\x7f' || ch === '\b') key = key.slice(0, -1);
         else if (ch > ' ' && ch <= '~') key += ch;
       }
     });
@@ -190,8 +192,22 @@ async function pipedKey() {
   return s.trim();
 }
 
+useSystemCA();
 const [cmd, ...args] = process.argv.slice(2);
 try {
+  if (cmd === 'version' || cmd === '-v' || cmd === '--version') {
+    console.log(JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version);
+    process.exit(0);
+  }
+  if (cmd === 'dir') {
+    if (args.length) {
+      const dir = resolve(args.join(' '));
+      if (!existsSync(dir)) throw new Error(`${dir} : dossier introuvable`);
+      saveConfig({ addonsDir: dir });
+    }
+    console.log(config().addonsDir);
+    process.exit(0);
+  }
   await migrate();
   if (!cmd) await (await import('../src/tui.mjs')).run();
   else if (cmd === 'check') await plain(false, args);

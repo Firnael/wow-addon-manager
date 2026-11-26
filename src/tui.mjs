@@ -1,9 +1,9 @@
 // Full-screen terminal UI, no dependencies: raw stdin, ANSI escapes, alternate screen.
 // Two views: installed addons (check, update, remove, add) and CurseForge search.
 
-import { execFile } from 'node:child_process';
 import * as core from './core.mjs';
 import { config } from './config.mjs';
+import { openUrl } from './platform.mjs';
 import { homedir } from 'node:os';
 import * as curse from './curse.mjs';
 import * as catalog from './catalog.mjs';
@@ -159,7 +159,7 @@ function runSearch() {
 const visibleResults = () => ui.search.results;
 
 const pageOf = core.pageOf;
-const open = (url) => url && execFile('open', [url]);
+const open = openUrl;
 
 // ---- drawing ------------------------------------------------------------------------------
 

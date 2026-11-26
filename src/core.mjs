@@ -3,9 +3,11 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { cp, lstat, mkdtemp, readdir, readFile, readlink, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdtemp, readdir, readFile, readlink, rename, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { linkDir } from './platform.mjs';
+import { extract } from './zip.mjs';
 import * as curse from './curse.mjs';
 import * as github from './github.mjs';
 import * as catalog from './catalog.mjs';
@@ -28,7 +30,7 @@ const norm = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 async function readToc(dir) {
   let files;
   try { files = (await readdir(dir)).filter((f) => f.endsWith('.toc')); } catch { return null; }
-  const name = dir.split('/').pop();
+  const name = basename(dir);
   const toc = files.find((f) => f === `${name}.toc`) ?? files.find((f) => /_(Forever|Camelot|Vanilla)\.toc$/i.test(f)) ?? files[0];
   if (!toc) return null;
   const text = await readFile(join(dir, toc), 'utf8');
@@ -44,6 +46,7 @@ export async function scan() {
   const state = await loadState();
   const byKey = new Map();
   const list = [];
+  if (!existsSync(addonsDir)) throw new Error(`dossier AddOns introuvable : ${addonsDir} (le régler avec : wam dir <chemin>)`);
   const ents = (await readdir(addonsDir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
   for (const ent of ents) {
     if (ent.name.startsWith('.')) continue;
@@ -99,10 +102,8 @@ export async function install(src, remote, { title } = {}) {
   try {
     const r = await fetch(remote.url, { headers: { 'user-agent': UA, ...remote.headers } });
     if (!r.ok) throw new Error(`téléchargement : HTTP ${r.status}`);
-    const zip = join(tmp, 'addon.zip');
-    await writeFile(zip, Buffer.from(await r.arrayBuffer()));
     const out = join(tmp, 'x');
-    execFileSync('unzip', ['-q', zip, '-d', out]);
+    await extract(Buffer.from(await r.arrayBuffer()), out);
     const dirs = (await readdir(out, { withFileTypes: true }))
       .filter((d) => d.isDirectory() && !d.name.startsWith('__') && !d.name.startsWith('.')).map((d) => d.name);
     if (!dirs.length) throw new Error('le zip ne contient aucun dossier');
@@ -138,10 +139,10 @@ export async function toRelease(addon) {
   await unlink(path);
   let dirs;
   try { dirs = await install(src, remote, { title: addon.title }); }
-  catch (e) { if (!existsSync(path)) await symlink(addon.target, path); throw e; }
+  catch (e) { if (!existsSync(path)) await linkDir(addon.target, path); throw e; }
   if (!dirs.includes(addon.name)) {
     for (const d of dirs) await rm(join(addonsDir, d), { recursive: true, force: true });
-    await symlink(addon.target, path);
+    await linkDir(addon.target, path);
     const state = await loadState(); delete state[keyOf(src)]; await saveState(state);
     throw new Error(`la release ${remote.name} ne contient pas de dossier ${addon.name} (${dirs.join(', ')})`);
   }
@@ -162,7 +163,7 @@ export async function toDev(addon) {
     if (await isLink(p)) throw new Error(`${d} est déjà un lien`);
     await rm(p, { recursive: true, force: true });
   }
-  await symlink(target, join(addonsDir, addon.name));
+  await linkDir(target, join(addonsDir, addon.name));
   const state = await loadState();
   delete state[addon.key];
   await saveState(state);
