@@ -463,7 +463,7 @@ export async function run() {
   // Splash for 1.6 s (any key skips it) while the addons are read; the gradient slides.
   const anim = setInterval(() => { ui.phase += 0.04; draw(); }, 50);
   endSplash = () => { if (!ui.splash) return; ui.splash = false; clearInterval(anim); ui.phase = 0; out.write(`${ESC}2J`); draw(); };
-  setTimeout(() => endSplash(), 1600);
+  setTimeout(() => endSplash(), Number(process.env.WAM_SPLASH_MS) || 1600); // longer for screenshots
   draw();
   await rescan();
   if (!curse.hasKey()) ui.msg = c.dim('Pas de clé CurseForge : la recherche est désactivée (`wam key`).');
