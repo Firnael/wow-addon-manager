@@ -4,6 +4,8 @@
 //   wam check     list addons and available updates
 //   wam update    update every third-party addon that is behind
 //   wam key       store the CurseForge API key (asked without echo)
+//   wam release <addon…>   one of our symlinked addons -> its latest GitHub release
+//   wam dev <addon…>       back to the symlink into its git repo
 
 import { existsSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
@@ -31,11 +33,11 @@ async function plain(update) {
   const addons = await core.scan();
   let behind = 0, failed = 0;
   for (const a of addons) {
-    if (a.local) { console.log(`   ${a.title} ${a.version ?? ''} (perso, lien)`); continue; }
+    if (a.local) { console.log(`   ${a.title} ${a.version ?? ''} (perso, lien${a.repo ? '' : ', sans remote GitHub'})`); continue; }
     if (!a.source) { console.log(`?  ${a.title} ${a.version ?? ''} : source inconnue`); continue; }
     try {
       const remote = await core.latest(a.source);
-      if (core.upToDate(a, remote)) { console.log(`=  ${a.title} ${a.version ?? ''}`); continue; }
+      if (core.upToDate(a, remote)) { console.log(`=  ${a.title} ${a.version ?? ''}${a.own ? ' (perso, release)' : ''}`); continue; }
       behind++;
       if (!update) { console.log(`↑  ${a.title} ${a.version ?? '?'} -> ${remote.name}`); continue; }
       const dirs = await core.install(a.source, remote, { title: a.title });
@@ -48,6 +50,23 @@ async function plain(update) {
   console.log(update ? `${behind} mis à jour, ${failed} en erreur.${behind ? ' /reload en jeu pour les charger.' : ''}`
     : `${behind} mise(s) à jour disponible(s), ${failed} en erreur.`);
   if (failed) process.exitCode = 1;
+}
+
+// Own addons named by folder or title, either mode.
+async function switchMode(names, dev) {
+  if (!names.length) throw new Error(`wam ${dev ? 'dev' : 'release'} <addon…>`);
+  const addons = await core.scan();
+  let ok = 0;
+  for (const n of names) {
+    const a = addons.find((x) => [x.name, x.title].some((s) => s?.toLowerCase() === n.toLowerCase()));
+    try {
+      if (!a) throw new Error('introuvable dans AddOns');
+      if (dev) { await core.toDev(a); console.log(`✓  ${a.title} : lien vers ${a.installed.link}`); }
+      else { const r = await core.toRelease(a); console.log(`✓  ${a.title} : release ${r.version} (${r.name})`); }
+      ok++;
+    } catch (e) { process.exitCode = 1; console.log(`✗  ${a?.title ?? n} : ${e.message}`); }
+  }
+  if (ok) console.log('/reload en jeu pour les charger.');
 }
 
 // Reads the key without echoing it, so it never lands in the terminal scrollback.
@@ -86,6 +105,7 @@ try {
   if (!cmd) await (await import('../src/tui.mjs')).run();
   else if (cmd === 'check') await plain(false);
   else if (cmd === 'update') await plain(true);
+  else if (cmd === 'release' || cmd === 'dev') await switchMode(process.argv.slice(3), cmd === 'dev');
   else if (cmd === 'key') {
     const key = process.stdin.isTTY ? await askKey() : await pipedKey();
     if (!key) throw new Error('clé vide, rien enregistré');
@@ -99,7 +119,7 @@ try {
     saveConfig({ apiKey: key });
     console.log(`Clé enregistrée et testée (fiche « ${m.name} » lue).`);
   } else {
-    console.log('wam [check | update | key]  (sans argument : interface)');
+    console.log('wam [check | update | key | release <addon…> | dev <addon…>]  (sans argument : interface)');
   }
 } catch (e) {
   console.error(`wam : ${e.message}`);

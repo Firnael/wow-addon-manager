@@ -3,7 +3,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { cp, lstat, mkdtemp, readdir, readFile, readlink, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, lstat, mkdtemp, readdir, readFile, readlink, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as curse from './curse.mjs';
@@ -52,18 +52,27 @@ export async function scan() {
     const toc = await readToc(path);
     if (!toc) continue;
     if (link) {
-      list.push({ name: ent.name, title: toc.title ?? ent.name, version: toc.version, dirs: [ent.name], local: true, target: await readlink(path) });
+      const target = await readlink(path);
+      list.push({ name: ent.name, title: toc.title ?? ent.name, notes: toc.notes, version: toc.version, dirs: [ent.name], local: true, target, repo: repoOf(target) });
       continue;
     }
     const tracked = Object.entries(state).find(([, s]) => s.dirs?.includes(ent.name));
     const src = tracked ? tracked[1].source : KNOWN[ent.name] ?? (toc.curse ? { curse: toc.curse } : null);
     const key = src ? keyOf(src) : null;
     if (key && byKey.has(key)) { byKey.get(key).dirs.push(ent.name); continue; }
-    const a = { name: ent.name, title: toc.title ?? ent.name, notes: toc.notes, version: toc.version, dirs: [ent.name], source: src, key, installed: key ? state[key] : null };
+    const installed = key ? state[key] : null;
+    // own: one of our addons running its release; installed.link is where `wam dev` relinks it.
+    const a = { name: ent.name, title: toc.title ?? ent.name, notes: toc.notes, version: toc.version, dirs: [ent.name], source: src, key, installed, own: Boolean(installed?.link) };
     if (key) byKey.set(key, a);
     list.push(a);
   }
   return list;
+}
+
+// GitHub owner/repo of the git repo a symlinked addon points into, from its origin remote.
+function repoOf(target) {
+  try { return github.repoFromRemote(execFileSync('git', ['-C', target, 'remote', 'get-url', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })); }
+  catch { return null; }
 }
 
 // Latest remote file for an addon's source: { ref, name, url, version, date, deps }.
@@ -87,7 +96,7 @@ export async function install(src, remote, { title } = {}) {
   const { addonsDir } = config();
   const tmp = await mkdtemp(join(tmpdir(), 'wam-'));
   try {
-    const r = await fetch(remote.url, { headers: { 'user-agent': UA } });
+    const r = await fetch(remote.url, { headers: { 'user-agent': UA, ...remote.headers } });
     if (!r.ok) throw new Error(`téléchargement : HTTP ${r.status}`);
     const zip = join(tmp, 'addon.zip');
     await writeFile(zip, Buffer.from(await r.arrayBuffer()));
@@ -108,12 +117,54 @@ export async function install(src, remote, { title } = {}) {
     }
     const state = await loadState();
     const key = keyOf(src);
-    state[key] = { ref: remote.ref, file: remote.name, source: src, dirs, title: title ?? state[key]?.title, at: new Date().toISOString().slice(0, 10) };
+    state[key] = { ref: remote.ref, file: remote.name, source: src, dirs, title: title ?? state[key]?.title, link: state[key]?.link, at: new Date().toISOString().slice(0, 10) };
     await saveState(state);
     return dirs;
   } finally {
     await rm(tmp, { recursive: true, force: true });
   }
+}
+
+// One of our symlinked addons -> its latest GitHub release. The symlink is put back if the
+// install fails, and its target is kept in the state for `toDev`.
+export async function toRelease(addon) {
+  if (!addon.local) throw new Error(`${addon.title} n'est pas un lien`);
+  if (!addon.repo) throw new Error(`${addon.title} : pas de remote GitHub dans ${addon.target}`);
+  const { addonsDir } = config();
+  const src = { github: addon.repo };
+  const remote = await latest(src);
+  const path = join(addonsDir, addon.name);
+  await unlink(path);
+  let dirs;
+  try { dirs = await install(src, remote, { title: addon.title }); }
+  catch (e) { if (!existsSync(path)) await symlink(addon.target, path); throw e; }
+  if (!dirs.includes(addon.name)) {
+    for (const d of dirs) await rm(join(addonsDir, d), { recursive: true, force: true });
+    await symlink(addon.target, path);
+    const state = await loadState(); delete state[keyOf(src)]; await saveState(state);
+    throw new Error(`la release ${remote.name} ne contient pas de dossier ${addon.name} (${dirs.join(', ')})`);
+  }
+  const state = await loadState();
+  state[keyOf(src)].link = addon.target;
+  await saveState(state);
+  return remote;
+}
+
+// Back from the release to the symlink into the git repo, to work on the addon.
+export async function toDev(addon) {
+  const target = addon.installed?.link;
+  if (!target) throw new Error(`${addon.title} n'a pas été installé par wam release`);
+  if (!(await readToc(target))) throw new Error(`${target} : pas de .toc, lien non recréé`);
+  const { addonsDir } = config();
+  for (const d of addon.dirs) {
+    const p = join(addonsDir, d);
+    if (await isLink(p)) throw new Error(`${d} est déjà un lien`);
+    await rm(p, { recursive: true, force: true });
+  }
+  await symlink(target, join(addonsDir, addon.name));
+  const state = await loadState();
+  delete state[addon.key];
+  await saveState(state);
 }
 
 // Removes an addon's folders. Never a symlink: own addons are removed by hand.

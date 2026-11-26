@@ -92,6 +92,20 @@ async function installCurse(id, title, seen = new Set()) {
   return done;
 }
 
+// Own addons: symlink into the git repo <-> latest GitHub release.
+async function toggleLink(a) {
+  if (!a.local && !a.own) return say('l ne sert qu\'à nos addons (lien ou release perso).');
+  say(a.local ? `Passage de ${a.title} à sa release…` : `Retour de ${a.title} au lien…`);
+  try {
+    if (a.local) { const r = await core.toRelease(a); say(`${a.title} : release ${r.version}. /reload en jeu.`); }
+    else { await core.toDev(a); say(`${a.title} : lien vers ${a.installed.link}. /reload en jeu.`); }
+  } catch (e) { say(c.red(`Échec : ${e.message}`)); }
+  ui.status.delete(a.name);
+  await rescan();
+  const b = ui.addons.find((x) => x.name === a.name);
+  if (b) checkOne(b);
+}
+
 // "Add" accepts a CurseForge link or project number, or a GitHub owner/repo (or its URL).
 async function add(text) {
   text = text.trim();
@@ -166,7 +180,7 @@ function statusCell(a) {
     case 'unknown': return c.dim('source inconnue');
     case 'checking': return c.dim('…');
     case 'busy': return c.yellow('installation…');
-    case 'ok': return st.fresh ? c.green(`✓ ${st.remote.version ?? 'mis à jour'}`) : c.green('à jour');
+    case 'ok': if (a.own && !st.fresh) return c.green('à jour') + c.cyan(' · perso, release'); return st.fresh ? c.green(`✓ ${st.remote.version ?? 'mis à jour'}`) : c.green('à jour');
     case 'update': return c.yellow(`↑ ${st.remote.version ?? st.remote.name}${st.remote.beta ? ' (bêta)' : ''}`);
     case 'error': return c.red(`✗ ${st.err}`);
     default: return '';
@@ -207,7 +221,7 @@ function render() {
     const a = ui.addons[ui.sel];
     L.push(c.dim('─'.repeat(W)));
     if (a) {
-      const src = a.local ? `lien vers ${a.target}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'source inconnue : a pour l\'ajouter';
+      const src = a.local ? `lien vers ${a.target}${a.repo ? ` · l : passer à la release de ${a.repo}` : ''}` : a.own ? `release de GitHub ${a.source.github} · l : revenir au lien ${a.installed.link}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'source inconnue : a pour l\'ajouter';
       L.push(fit(` ${c.bold(a.title)}  ${c.dim(a.dirs.join(', '))}`, W + 20));
       L.push(fit(` ${a.notes ?? ''}`, W));
       L.push(c.dim(fit(` ${src}${a.installed?.at ? ` · installé le ${a.installed.at}` : ''}`, W)));
@@ -237,7 +251,7 @@ function render() {
   L.push(ui.prompt ? ` ${c.yellow(ui.prompt.label)} ${ui.prompt.value ?? ''}${ui.prompt.confirm ? '' : c.inv(' ')}` : ` ${ui.msg}`);
   const keys = ui.prompt ? (ui.prompt.confirm ? 'o oui · n non' : 'Entrée valider · Échap annuler')
     : ui.view === 'installed'
-      ? '↑↓ choisir · u mettre à jour · U tout · r vérifier · a ajouter · d supprimer · o page · Tab recherche · q quitter'
+      ? '↑↓ choisir · u mettre à jour · U tout · r vérifier · a ajouter · d supprimer · l lien/release · o page · Tab recherche · q quitter'
       : ui.search.input ? 'Entrée chercher · ↓ résultats · Tab installés · Échap quitter la saisie'
         : '↑↓ choisir · Entrée installer · o page · / nouvelle recherche · R rafraîchir le catalogue · Tab installés · q quitter';
   L.push(c.dim(fit(` ${keys}`, W)));
@@ -319,6 +333,7 @@ function onKey(data) {
   else if (k === 'u' && a) updateOne(a).then(async (ok) => { if (ok) { await rescan(); say(`${a.title} mis à jour. /reload en jeu.`); } else draw(); });
   else if (k === 'U') updateAll();
   else if (k === 'o' && a) { const url = pageOf(a); if (url) open(url); else say('Pas de page connue pour cet addon.'); }
+  else if (k === 'l' && a) toggleLink(a);
   else if (k === 'a') ui.prompt = { label: 'Ajouter (lien CurseForge, numéro de projet ou owner/repo GitHub) :', value: '', submit: add };
   else if (k === 'd' && a) {
     if (a.local) say('Addon perso (lien) : à retirer à la main.');
