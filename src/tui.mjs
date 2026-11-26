@@ -3,6 +3,8 @@
 
 import { execFile } from 'node:child_process';
 import * as core from './core.mjs';
+import { config } from './config.mjs';
+import { homedir } from 'node:os';
 import * as curse from './curse.mjs';
 import * as catalog from './catalog.mjs';
 
@@ -196,7 +198,10 @@ function render() {
   const tab = (k, label, on) => (on ? `${bg(RETRO[2])}${ESC}1m ${k} ${label} ${RESET}` : c.dim(` ${k} ${label} `));
   const logo = grad(SMALL, ui.phase);
   const right = (left, r) => left + ' '.repeat(Math.max(1, W - vlen(left) - vlen(r) - 1)) + r;
-  L.push(right(` ${grad(['WoW Forever'])[0]} ${c.dim('· addon manager')}`, logo[0]));
+  // "Forever" then the AddOns folder, ~ for home, cut from the left so its end stays visible.
+  const home = homedir(), dir = config().addonsDir.replace(home, '~');
+  const room = W - vlen(logo[0]) - 14;
+  L.push(right(` ${grad(['Forever'])[0]}  ${fg(RETRO[1])}${dir.length > room ? '…' + dir.slice(-(room - 1)) : dir}${RESET}`, logo[0]));
   L.push(right(` ${tab(1, 'Installés', ui.view === 'installed')}${tab(2, 'Rechercher', ui.view === 'search')}`, logo[1]));
   L.push(soft('─'.repeat(W)));
   const bodyH = H - 9;
@@ -265,7 +270,7 @@ function hints(keys, W) {
 function splash() {
   const W = out.columns || 100, H = out.rows || 30;
   const art = grad(BIG, ui.phase);
-  const sub = [`${c.dim('World of Warcraft')} ${grad(['Forever'], ui.phase)[0]} ${c.dim('· addon manager')}`, '', c.dim(`v${VERSION}`)];
+  const sub = [c.dim('WoW Addons Manager'), '', c.dim(`v${VERSION}`)];
   const block = [...art, '', ...sub];
   const top = Math.max(0, Math.floor((H - block.length) / 2));
   const L = Array(top).fill('');
