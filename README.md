@@ -18,7 +18,7 @@ L'app CurseForge ne fonctionne pas derrière certains proxy (d'entreprise 👀),
 
 - **Mises à jour** : compare chaque addon installé à sa dernière version Forever (CurseForge ou release GitHub) et met à jour en un coup (`U`, ou `wam update`).
 - **Recherche** dans le catalogue des ~19 000 addons Forever, installation avec les dépendances obligatoires.
-- **Ajout** par lien CurseForge, numéro de projet ou `owner/repo` GitHub.
+- **Ajout** par lien CurseForge, numéro de projet ou `owner/repo` GitHub, avec les dépendances obligatoires (celles de CurseForge et celles du `## Dependencies` du `.toc`).
 - **Reconnaît les addons installés à la main** grâce au numéro CurseForge de leur `.toc`.
 - **Addons perso** : un addon qu'on développe reste un lien vers son repo, et bascule entre ce lien et sa dernière release GitHub (`l`, ou `wam release` / `wam dev`).
 - Chaque action de l'interface a aussi sa commande, pour les scripts.

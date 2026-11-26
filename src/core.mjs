@@ -40,7 +40,9 @@ async function readToc(dir) {
   // [ \t] and not \s: an empty tag must not run on into the next line.
   const tag = (k) => text.match(new RegExp(`^## ${k}:[ \\t]*(.*?)[ \\t\\r]*$`, 'mi'))?.[1] || undefined;
   const title = tag('Title')?.replace(/\|c[0-9a-f]{8}|\|r/gi, '').trim();
-  return { version: tag('Version'), title, notes: tag('Notes'), curse: Number(tag('X-Curse-Project-ID')) || null };
+  // Required dependencies: folder names, comma-separated (OptionalDeps are left alone).
+  const deps = (tag('(?:Dependencies|RequiredDeps|Deps?)') ?? '').split(',').map((d) => d.trim()).filter(Boolean);
+  return { version: tag('Version'), title, notes: tag('Notes'), curse: Number(tag('X-Curse-Project-ID')) || null, deps };
 }
 
 // One entry per addon: folders that come from the same source are grouped
@@ -199,14 +201,56 @@ export async function installCurse(id, title, { onStep = () => {}, seen = new Se
   const dirs = await install({ curse: id }, remote, { title });
   const done = [title ?? dirs[0]];
   have.add(`curse:${id}`);
-  if (!curse.hasKey()) return done;
-  for (const dep of await curse.requiredDeps(id, remote.fileId)) {
-    if (have.has(`curse:${dep}`)) continue;
-    const m = await curse.mod(dep).catch(() => null);
-    onStep(`Dépendance : ${m?.name ?? dep}…`);
-    done.push(...await installCurse(dep, m?.name, { onStep, seen, have }));
+  if (curse.hasKey()) {
+    for (const dep of await curse.requiredDeps(id, remote.fileId)) {
+      if (have.has(`curse:${dep}`)) continue;
+      const m = await curse.mod(dep).catch(() => null);
+      onStep(`Dépendance : ${m?.name ?? dep}…`);
+      done.push(...await installCurse(dep, m?.name, { onStep, seen, have }));
+    }
+  }
+  // The .toc too: works without the key, and catches deps CurseForge does not list.
+  done.push(...await installTocDeps(dirs, { onStep, seen, have }));
+  return done;
+}
+
+// Where a dependency named in a .toc (a folder name) comes from: KNOWN, else the catalog
+// project with exactly that name or slug. null when neither knows it.
+function depSource(name) {
+  if (KNOWN[name]) return KNOWN[name];
+  const n = norm(name);
+  const m = catalog.mods().find((x) => norm(x.name) === n || norm(x.slug) === n);
+  return m ? { curse: m.id, title: m.name } : null;
+}
+
+// Installs the required deps named in the .toc of the folders just installed that are not in
+// AddOns yet. One that cannot be found or installed is reported through onStep, not thrown:
+// the addon itself is installed. Returns the titles installed.
+async function installTocDeps(dirs, { onStep = () => {}, seen = new Set(), have } = {}) {
+  const { addonsDir } = config();
+  await catalog.load().catch(() => {});
+  const done = [];
+  for (const d of dirs) {
+    for (const dep of (await readToc(join(addonsDir, d)))?.deps ?? []) {
+      if (seen.has(`toc:${dep}`) || existsSync(join(addonsDir, dep))) continue;
+      seen.add(`toc:${dep}`);
+      const src = depSource(dep);
+      if (!src) { onStep(`⚠ Dépendance ${dep} introuvable (ni KNOWN ni catalogue) : à installer à la main`); continue; }
+      onStep(`Dépendance : ${src.title ?? dep}…`);
+      try {
+        if (src.curse) done.push(...await installCurse(src.curse, src.title, { onStep, seen, have }));
+        else done.push(...await installGithub(src, { onStep, seen, have }));
+      } catch (e) { onStep(`⚠ Dépendance ${dep} : ${e.message}`); }
+    }
   }
   return done;
+}
+
+// A GitHub release and the deps its .toc names. Returns the folders installed, with the file.
+async function installGithub(src, opts = {}) {
+  const remote = await latest(src);
+  const dirs = await install(src, remote);
+  return [...dirs.map((d) => `${d} (${remote.name})`), ...await installTocDeps(dirs, opts)];
 }
 
 // "Add" accepts a CurseForge link or project number, or a GitHub owner/repo (or its URL).
@@ -226,9 +270,7 @@ export async function add(text, { onStep = () => {} } = {}) {
   if (gh && !text.includes(' ')) {
     const src = { github: gh[1], asset: 'forever.*\\.zip$' };
     onStep(`Recherche d'une release Forever sur ${gh[1]}…`);
-    const remote = await latest(src);
-    const dirs = await install(src, remote);
-    return dirs.map((d) => `${d} (${remote.name})`);
+    return installGithub(src, { onStep });
   }
   throw new Error('format non reconnu : lien CurseForge, numéro de projet ou owner/repo GitHub');
 }

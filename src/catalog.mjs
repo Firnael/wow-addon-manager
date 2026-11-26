@@ -81,3 +81,4 @@ export function search(text) {
 
 export const byId = (id) => cat?.mods.find((m) => m.id === id) ?? null;
 export const bySlug = (slug) => cat?.mods.find((m) => m.slug === slug) ?? null;
+export const mods = () => cat?.mods ?? [];
