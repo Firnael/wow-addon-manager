@@ -132,7 +132,8 @@ Dans `~/.config/wam/` (Windows : `%USERPROFILE%\.config\wam`), ou `$WAM_HOME` :
 <details>
 <summary>Code</summary>
 
-- `bin/wam.mjs` : les commandes.
+- `bin/wam.mjs` : point d'entrée, vérifie que Node est en version 24 ou plus.
+- `src/cli.mjs` : les commandes.
 - `src/core.mjs` : lecture du dossier AddOns, versions, installation (dossier remplacé en bloc, ancien remis en place en cas d'échec), suppression.
 - `src/curse.mjs`, `src/github.mjs` : les sources. `src/catalog.mjs` : le catalogue et sa recherche.
 - `src/zip.mjs` : extraction des zips (stored / deflate).
