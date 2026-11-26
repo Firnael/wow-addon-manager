@@ -2,6 +2,36 @@
 
 Une interface en terminal pour mettre à jour, chercher, ajouter et supprimer les addons de WoW Forever, sans l'app CurseForge (qui marche mal derrière Zscaler). Node ≥ 24, aucune dépendance.
 
+## Installation
+
+Il faut macOS (les logos passent par `sips` ; ailleurs tout marche sauf eux) et Node ≥ 24 (`node -v`).
+
+```sh
+git clone git@github.com:Firnael/wow-addon-manager.git ~/git/wow-addon-manager
+mkdir -p ~/.local/bin
+ln -s ~/git/wow-addon-manager/bin/wam.mjs ~/.local/bin/wam
+```
+
+`~/.local/bin` doit être dans le `PATH` (sinon, ajouter `export PATH="$HOME/.local/bin:$PATH"` à `~/.zshrc`). Mettre à jour wam : `git -C ~/git/wow-addon-manager pull`.
+
+Le script se lance avec `node --use-system-ca` : derrière un proxy d'entreprise (Zscaler), Node prend ainsi le certificat du trousseau macOS.
+
+**Clé CurseForge** (facultative : sans elle, tout marche sauf la recherche et l'installation automatique des dépendances). La créer sur [console.curseforge.com](https://console.curseforge.com) (onglet API keys, gratuit), puis :
+
+```sh
+wam key        # saisie masquée ; la clé est testée avant d'être enregistrée
+```
+
+**Dossier AddOns** : par défaut `/Applications/World of Warcraft/_forever_/Interface/AddOns`. Si le jeu est ailleurs, l'indiquer dans `~/.config/wam/config.json` :
+
+```json
+{ "addonsDir": "/chemin/vers/_forever_/Interface/AddOns" }
+```
+
+**Premier lancement** : `wam` ouvre l'interface et vérifie les addons déjà là. Ceux installés à la main sont reconnus s'ils ont un numéro CurseForge dans leur `.toc` (la plupart) ; les autres s'affichent en « source inconnue » : les réinstaller avec `a` (ou `wam add`) pour qu'ils soient suivis. La première recherche construit le catalogue des addons Forever (~19 000, quelques minutes, une fois par semaine ensuite).
+
+## Utilisation
+
 ```sh
 wam                        # l'interface
 wam check [addon…]         # versions et mises à jour disponibles
@@ -18,7 +48,7 @@ wam key                    # enregistre la clé API CurseForge (saisie masquée)
 
 `<addon>` est le nom du dossier ou le titre, sans tenir compte de la casse. Chaque action de l'interface a sa commande ; `wam help` les liste.
 
-`wam` est un lien de `~/.local/bin/wam` vers `bin/wam.mjs`, qui se lance avec `node --use-system-ca` (le certificat de Zscaler est dans le trousseau macOS, pas dans celui de Node).
+Exemples : `wam search questie` puis `wam add 334372` ; `wam add https://www.curseforge.com/wow/addons/tomtom` ; `wam add Questie/QuestieDB` ; `wam update`, puis `/reload` en jeu.
 
 ## Interface
 
