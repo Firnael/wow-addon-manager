@@ -1,5 +1,5 @@
 <p align="center">
-	<b>wam</b>
+	<img width="320" src="./assets/logo.png" alt="wam">
 	<br/>
 	<i>WoW Addon Manager</i>
 	<br/>
@@ -138,7 +138,7 @@ Dans `~/.config/wam/` (Windows : `%USERPROFILE%\.config\wam`), ou `$WAM_HOME` :
 - `src/zip.mjs` : extraction des zips (stored / deflate).
 - `src/platform.mjs` : ce qui change selon l'OS (certificats, ouverture d'une page, liens, dossier par défaut).
 - `src/logo.mjs` : les logos (CurseForge, sinon l'avatar GitHub du propriétaire), décodés, réduits à 96 px au plus et dessinés dans un carré fixe en haut du panneau.
-- `src/tui.mjs` : l'interface, avec un écran d'accueil d'1,6 s (une touche le passe).
+- `src/tui.mjs` : l'interface, avec un écran d'accueil d'1,6 s (une touche le passe ; `WAM_SPLASH_MS=10000 wam` le garde 10 s, pour une capture).
 
 Pour tester sans toucher au vrai dossier : `WAM_HOME=/tmp/w` avec un `config.json` dont `addonsDir` pointe ailleurs.
 </details>
