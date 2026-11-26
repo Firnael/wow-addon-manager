@@ -47,6 +47,7 @@ La release vient du workflow `.github/workflows/release.yml` de chaque addon : p
 
 - `config.json` : `addonsDir` (par défaut le dossier AddOns de `_forever_` sous `/Applications`) et `apiKey`. Droits `600`. La clé peut aussi venir de `CURSEFORGE_API_KEY`.
 - `catalog.json` : le catalogue des addons Forever (quelques Mo).
+- `logos/` : les logos déjà convertis (un fichier vide pour un addon sans logo).
 - `state.json` : pour chaque source, le fichier installé, ses dossiers, la date et, pour nos addons en release, la cible du lien. C'est lui qui dit si un addon est à jour ; sans trace, la version du `.toc` est comparée au nom du fichier en ligne.
 
 ## Code
@@ -55,6 +56,7 @@ La release vient du workflow `.github/workflows/release.yml` de chaque addon : p
 - `src/core.mjs` : lecture du dossier AddOns, comparaison des versions, installation (dossier remplacé en bloc, ancien remis en place en cas d'échec), suppression.
 - `src/curse.mjs`, `src/github.mjs` : les sources.
 - `src/catalog.mjs` : le catalogue local et sa recherche.
+- `src/logo.mjs` : les logos du panneau de droite (logo CurseForge, sinon l'avatar du propriétaire GitHub), convertis par `sips` (macOS) en BMP de 64 px au plus, dessinés en demi-blocs colorés et gardés dans `logos/`.
 - `src/tui.mjs` : l'interface (stdin brut, codes ANSI, écran alternatif), avec un écran d'accueil d'1,6 s (une touche le passe) et le dégradé « retro » d'azotui, en 24 bits si `COLORTERM` le dit, sinon en 256 couleurs.
 
 Pour tester sans toucher au vrai dossier : `WAM_HOME=/tmp/w` avec un `config.json` dont `addonsDir` pointe ailleurs.

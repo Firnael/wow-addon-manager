@@ -42,6 +42,7 @@ export const shape = (m) => ({
   id: m.id, slug: m.slug, name: m.name, summary: m.summary, downloads: m.downloadCount,
   author: m.authors?.[0]?.name, updated: m.dateReleased ?? m.dateModified, url: m.links?.websiteUrl,
   forever: (m.latestFilesIndexes ?? []).some((f) => isForever(f.gameVersion)),
+  logo: m.logo?.thumbnailUrl ?? m.logo?.url ?? null,
 });
 
 // /v1/mods/search answers 403 for console keys: see catalog.mjs. Featured skips excludedIds.

@@ -7,6 +7,7 @@ import { config } from './config.mjs';
 import { homedir } from 'node:os';
 import * as curse from './curse.mjs';
 import * as catalog from './catalog.mjs';
+import * as logos from './logo.mjs';
 
 const out = process.stdout;
 const ESC = '\x1b[';
@@ -192,6 +193,68 @@ function scrollTo(obj, len, height) {
   if (obj.sel >= obj.top + height) obj.top = obj.sel - height + 1;
 }
 
+// Cuts a coloured string to w visible characters, then pads it to exactly w.
+function cutA(str, w) {
+  let out = '', n = 0;
+  for (let i = 0; i < str.length && n < w;) {
+    const m = str.slice(i).match(/^\x1b\[[0-9;]*m/);
+    if (m) { out += m[0]; i += m[0].length; continue; }
+    const ch = String.fromCodePoint(str.codePointAt(i));
+    out += ch; i += ch.length; n++;
+  }
+  return out + RESET + ' '.repeat(Math.max(0, w - n));
+}
+
+function wrap(text, w, max = Infinity) {
+  const lines = [];
+  let line = '';
+  for (const word of String(text ?? '').split(/\s+/).filter(Boolean)) {
+    if (line && line.length + 1 + word.length > w) { lines.push(line); line = ''; }
+    line = line ? `${line} ${word}` : word.length > w ? word.slice(0, w - 1) + '…' : word;
+  }
+  if (line) lines.push(line);
+  return lines.length > max ? [...lines.slice(0, max - 1), lines[max - 1].slice(0, w - 1) + '…'] : lines;
+}
+
+// ---- logos: CurseForge project logo, else the GitHub owner's avatar ------------------------
+
+function logoKey(x) {
+  if (x.curse) return { key: `curse-${x.curse}`, url: async () => catalog.byId(x.curse)?.logo ?? (curse.hasKey() ? (await curse.mod(x.curse)).logo : null) };
+  if (x.github) { const owner = x.github.split('/')[0]; return { key: `gh-${owner}`, url: async () => `https://github.com/${owner}.png?size=128` }; }
+  return null;
+}
+const addonLogo = (a) => logoKey(a.source?.curse ? { curse: a.source.curse } : { github: a.source?.github ?? a.repo });
+const paint = { fg: (p) => fg(p.slice(0, 3)), bg: (p) => bg(p.slice(0, 3)), reset: RESET };
+function logoLines(ref, w, h) {
+  if (!ref || w < 4 || h < 2) return [];
+  const img = logos.get(ref.key, ref.url, draw);
+  if (img === undefined) return [c.dim('chargement du logo…')];
+  return img ? logos.render(img, Math.min(64, w), Math.min(32, h), paint) : [];
+}
+
+// Right-hand panel for the selected installed addon / search result.
+function panelInstalled(a, w, h) {
+  if (!a) return [];
+  const src = a.local ? `Lien vers ${a.target}` : a.own ? `Release GitHub ${a.source.github}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'Source inconnue : a pour l\'ajouter';
+  const L = [...wrap(a.title, w, 2).map((l) => accent(c.bold(l))), c.dim(a.dirs.join(', ')), ''];
+  L.push(...wrap(a.notes, w, 4), '');
+  for (const l of wrap(src, w, 2)) L.push(soft(l));
+  if (a.version) L.push(c.dim(`Version ${a.version}`));
+  if (a.installed?.at) L.push(c.dim(`Installé le ${a.installed.at}`));
+  if (a.local && a.repo) L.push(c.dim(`l : passer à la release de ${a.repo}`));
+  if (a.own) L.push(c.dim('l : revenir au lien'));
+  L.push('');
+  return [...L, ...logoLines(addonLogo(a), w, h - L.length)];
+}
+
+function panelSearch(r, w, h) {
+  if (!r) return [];
+  const L = [...wrap(r.name, w, 2).map((l) => accent(c.bold(l))), c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''}`), c.dim(`Mis à jour le ${day(r.updated)}`), ''];
+  L.push(...wrap(r.summary, w, 5), '');
+  if (r.url) L.push(soft(r.url.replace('https://www.', '')), '');
+  return [...L, ...logoLines(logoKey({ curse: r.id }), w, h - L.length)];
+}
+
 function render() {
   const W = out.columns || 100, H = out.rows || 30;
   const L = [];
@@ -204,44 +267,46 @@ function render() {
   L.push(right(` ${grad(['Forever'])[0]}  ${fg(RETRO[1])}${dir.length > room ? '…' + dir.slice(-(room - 1)) : dir}${RESET}`, logo[0]));
   L.push(right(` ${tab(1, 'Installés', ui.view === 'installed')}${tab(2, 'Rechercher', ui.view === 'search')}`, logo[1]));
   L.push(soft('─'.repeat(W)));
-  const bodyH = H - 9;
+
+  // Wide enough: list on the left, details and logo on the right. Else details below the list.
+  const side = W >= 100;
+  const LW = side ? Math.min(78, W - 36) : W, PW = W - LW - 3;
+  const bodyH = side ? H - 5 : H - 9;
+  let rows, sel, top, listH, head = null, panel, bottom;
 
   if (ui.view === 'installed') {
-    const rows = ui.addons.map((a) => {
-      const name = fit(a.title, 32), ver = fit(a.version ?? '', 18);
-      return ` ${name} ${c.dim(ver)} ${statusCell(a)}`;
-    });
+    rows = ui.addons.map((a) => ` ${fit(a.title, 32)} ${c.dim(fit(a.version ?? '', 16))} ${statusCell(a)}`);
     scrollTo(ui, rows.length, bodyH);
-    L.push(...list(rows, ui.sel, ui.top, bodyH, W));
+    ({ sel, top } = ui); listH = bodyH;
     const a = ui.addons[ui.sel];
-    L.push(soft('─'.repeat(W)));
-    if (a) {
-      const src = a.local ? `lien vers ${a.target}${a.repo ? ` · l : passer à la release de ${a.repo}` : ''}` : a.own ? `release de GitHub ${a.source.github} · l : revenir au lien ${a.installed.link}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'source inconnue : a pour l\'ajouter';
-      const cut = (t, w) => (t.length > w ? t.slice(0, Math.max(0, w - 1)) + '…' : t);
-      L.push(` ${accent(c.bold(cut(a.title, W - 4)))}  ${c.dim(cut(a.dirs.join(', '), Math.max(0, W - a.title.length - 4)))}`);
-      L.push(fit(` ${a.notes ?? ''}`, W));
-      L.push(c.dim(fit(` ${src}${a.installed?.at ? ` · installé le ${a.installed.at}` : ''}`, W)));
-    } else L.push('', '', '');
+    panel = () => panelInstalled(a, PW, bodyH);
+    bottom = () => {
+      if (!a) return ['', '', ''];
+      const src = a.local ? `lien vers ${a.target}` : a.own ? `release de GitHub ${a.source.github}` : a.source?.curse ? `CurseForge ${a.source.curse}` : a.source?.github ? `GitHub ${a.source.github}` : 'source inconnue';
+      return [` ${accent(c.bold(a.title))}  ${c.dim(a.dirs.join(', '))}`, ` ${a.notes ?? ''}`, c.dim(` ${src}${a.installed?.at ? ` · installé le ${a.installed.at}` : ''}`)];
+    };
   } else {
     const s = ui.search;
     const cursor = s.input ? c.inv(' ') : '';
-    L.push(` ${accent('⌕')} ${s.query}${cursor}  ${c.dim(ui.catalogMsg ?? (catalog.size() ? `catalogue : ${catalog.size()} addons Forever` : ''))}`);
+    head = ` ${accent('⌕')} ${s.query}${cursor}  ${c.dim(ui.catalogMsg ?? (catalog.size() ? `catalogue : ${catalog.size()} addons Forever` : ''))}`;
     const res = visibleResults();
     const have = new Set(ui.addons.map((a) => a.key));
-    const rows = res.map((r) => {
-      const tags = have.has(`curse:${r.id}`) ? c.green('installé') : '';
-      return ` ${fit(r.name, 40)} ${c.dim(fit(fmtN(r.downloads), 7))} ${c.dim(fit(r.author, 18))} ${tags}`;
-    });
+    rows = res.map((r) => ` ${fit(r.name, side ? 38 : 40)} ${c.dim(fit(fmtN(r.downloads), 7))} ${c.dim(fit(r.author, 18))} ${have.has(`curse:${r.id}`) ? c.green('installé') : ''}`);
     if (!rows.length && s.done) rows.push(c.dim(catalog.isBuilding() ? ' rien pour l\'instant, le catalogue se construit…' : ' aucun résultat'));
-    scrollTo(s, res.length || 1, bodyH - 1);
-    L.push(...list(rows, s.input ? -1 : s.sel, s.top, bodyH - 1, W));
-    const r = res[s.sel];
-    L.push(soft('─'.repeat(W)));
-    if (r && !s.input) {
-      L.push(` ${accent(c.bold(r.name))}  ${c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''} · ${day(r.updated)}`)}`);
-      L.push(fit(` ${r.summary ?? ''}`, W));
-      L.push(c.dim(fit(` ${r.url ?? ''}`, W)));
-    } else L.push('', '', '');
+    listH = bodyH - 1;
+    scrollTo(s, res.length || 1, listH);
+    sel = s.input ? -1 : s.sel; top = s.top;
+    const r = s.input ? null : res[s.sel];
+    panel = () => panelSearch(r, PW, bodyH);
+    bottom = () => (r ? [` ${accent(c.bold(r.name))}  ${c.dim(`${fmtN(r.downloads)} téléchargements · ${r.author ?? ''} · ${day(r.updated)}`)}`, ` ${r.summary ?? ''}`, c.dim(` ${r.url ?? ''}`)] : ['', '', '']);
+  }
+
+  const left = [...(head ? [head] : []), ...list(rows, sel, top, listH, LW)];
+  if (side) {
+    const p = panel();
+    for (let i = 0; i < bodyH; i++) L.push(cutA(left[i] ?? '', LW) + ' ' + soft('│') + ' ' + cutA(p[i] ?? '', PW));
+  } else {
+    L.push(...left.map((l) => cutA(l, W)), soft('─'.repeat(W)), ...bottom().map((l) => cutA(l, W)));
   }
 
   L.push(ui.prompt ? ` ${c.yellow(ui.prompt.label)} ${ui.prompt.value ?? ''}${ui.prompt.confirm ? '' : c.inv(' ')}` : ` ${ui.msg}`);

@@ -79,4 +79,5 @@ export function search(text) {
   return hits.sort((a, b) => b.score - a.score || b.m.downloads - a.m.downloads).slice(0, 200).map((h) => h.m);
 }
 
+export const byId = (id) => cat?.mods.find((m) => m.id === id) ?? null;
 export const bySlug = (slug) => cat?.mods.find((m) => m.slug === slug) ?? null;
