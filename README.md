@@ -1,95 +1,152 @@
-# wam : gestionnaire d'addons WoW Forever
+<p align="center">
+	<b>wam</b>
+	<br/>
+	<i>WoW Addon Manager</i>
+	<br/>
+	<br/>
+	Gestionnaire d'addons pour <b>WoW Forever</b>, en terminal.<br/>
+	macOS, Windows et Linux. Node ≥ 24, deux petites dépendances en pur JS.
+</p>
 
-Une interface en terminal pour mettre à jour, chercher, ajouter et supprimer les addons de WoW Forever, sans l'app CurseForge (qui marche mal derrière Zscaler). Node ≥ 24, aucune dépendance.
+## Why 🤷
 
-## Installation
+L'app CurseForge ne fonctionne pas derrière certains proxy (d'entreprise 👀), et mettre à jour 30 addons à la main en dézippant des fichiers, c'est chiant.
 
-Il faut macOS (les logos passent par `sips` ; ailleurs tout marche sauf eux) et Node ≥ 24 (`node -v`).
+`wam` met à jour, cherche, installe et supprime les addons Forever depuis le terminal, avec une vraie interface, et les logos des addons en blocs de couleur.
 
-```sh
-git clone git@github.com:Firnael/wow-addon-manager.git ~/git/wow-addon-manager
-mkdir -p ~/.local/bin
-ln -s ~/git/wow-addon-manager/bin/wam.mjs ~/.local/bin/wam
+## Features ✨
+
+- **Mises à jour** : compare chaque addon installé à sa dernière version Forever (CurseForge ou release GitHub) et met à jour en un coup (`U`, ou `wam update`).
+- **Recherche** dans le catalogue des ~19 000 addons Forever, installation avec les dépendances obligatoires.
+- **Ajout** par lien CurseForge, numéro de projet ou `owner/repo` GitHub.
+- **Reconnaît les addons installés à la main** grâce au numéro CurseForge de leur `.toc`.
+- **Addons perso** : un addon qu'on développe reste un lien vers son repo, et bascule entre ce lien et sa dernière release GitHub (`l`, ou `wam release` / `wam dev`).
+- Chaque action de l'interface a aussi sa commande, pour les scripts.
+
+## Install 💽
+
+Il faut **Node ≥ 24** (`node -v`) : [nodejs.org](https://nodejs.org), `brew install node` ou `winget install OpenJS.NodeJS`. npm est fourni avec.
+
+```bash
+$ npm install -g https://github.com/Firnael/wow-addon-manager/archive/main.tar.gz
 ```
 
-`~/.local/bin` doit être dans le `PATH` (sinon, ajouter `export PATH="$HOME/.local/bin:$PATH"` à `~/.zshrc`). Mettre à jour wam : `git -C ~/git/wow-addon-manager pull`.
+C'est tout : la commande `wam` est dans le `PATH`, sur macOS, Linux et Windows. Pour mettre à jour wam, relancer la même commande. Pour le désinstaller : `npm uninstall -g wow-addon-manager`.
 
-Le script se lance avec `node --use-system-ca` : derrière un proxy d'entreprise (Zscaler), Node prend ainsi le certificat du trousseau macOS.
+> Derrière un proxy, si npm lui-même refuse le certificat : préfixer la commande par `NODE_USE_SYSTEM_CA=1` (PowerShell : `$env:NODE_USE_SYSTEM_CA=1; npm install -g …`). wam, lui, prend tout seul les certificats du système.
 
-**Clé CurseForge** (facultative : sans elle, tout marche sauf la recherche et l'installation automatique des dépendances). La créer sur [console.curseforge.com](https://console.curseforge.com) (onglet API keys, gratuit), puis :
+<details>
+<summary>Depuis un clone (pour bosser sur wam)</summary>
 
-```sh
-wam key        # saisie masquée ; la clé est testée avant d'être enregistrée
+```bash
+$ git clone https://github.com/Firnael/wow-addon-manager.git
+$ cd wow-addon-manager
+$ npm link          # installe les dépendances, `wam` pointe sur ce dossier ; mise à jour : git pull
+```
+</details>
+
+### Premier lancement
+
+1. **Dossier AddOns** : wam cherche `World of Warcraft/_forever_/Interface/AddOns` à l'endroit habituel (`/Applications` sur macOS ; `C:\Program Files (x86)`, `C:\Program Files`, `C:\` ou `D:\` sur Windows ; `~/Games` sur Linux). Vérifier avec `wam dir`. Si le jeu est ailleurs :
+
+   ```bash
+   $ wam dir "D:\Jeux\World of Warcraft\_forever_\Interface\AddOns"
+   ```
+
+2. **Clé CurseForge** (facultative : sans elle, tout marche sauf la recherche et l'installation des dépendances). La créer sur [console.curseforge.com](https://console.curseforge.com) (onglet *API keys*, gratuit), puis :
+
+   ```bash
+   $ wam key        # saisie masquée ; la clé est testée avant d'être enregistrée
+   ```
+
+3. `wam` ouvre l'interface. Les addons installés à la main sont reconnus s'ils ont un numéro CurseForge dans leur `.toc` (la plupart) ; les autres s'affichent en « source inconnue » : les réinstaller avec `a` pour qu'ils soient suivis. La première recherche construit le catalogue (quelques minutes, puis une fois par semaine).
+
+Sur Windows, utiliser **Windows Terminal** (installé d'office sur Windows 11) : couleurs 24 bits et caractères des logos.
+
+## Usage 🧑‍💻
+
+```bash
+$ wam                        # l'interface
+$ wam check [addon…]         # versions et mises à jour disponibles
+$ wam update [addon…]        # met à jour ce qui est en retard (tout, ou les addons nommés)
+$ wam add <source…>          # lien CurseForge, numéro de projet ou owner/repo GitHub (+ dépendances)
+$ wam remove [-y] <addon…>   # supprime, après confirmation sauf avec -y
+$ wam search <mots…>         # catalogue Forever : numéro, nom, téléchargements, auteur
+$ wam catalog                # reconstruit le catalogue
+$ wam open <addon>           # ouvre la page de l'addon
+$ wam release <addon…>       # addon perso : lien -> dernière release GitHub
+$ wam dev <addon…>           # retour au lien vers le repo
+$ wam key                    # enregistre la clé API CurseForge
+$ wam dir [chemin]           # affiche ou règle le dossier AddOns
+$ wam version
 ```
 
-**Dossier AddOns** : par défaut `/Applications/World of Warcraft/_forever_/Interface/AddOns`. Si le jeu est ailleurs, l'indiquer dans `~/.config/wam/config.json` :
+`<addon>` est le nom du dossier ou le titre, sans tenir compte de la casse. Exemples : `wam search questie` puis `wam add 334372` ; `wam add https://www.curseforge.com/wow/addons/tomtom` ; `wam add Questie/QuestieDB` ; `wam update`, puis `/reload` en jeu.
 
-```json
-{ "addonsDir": "/chemin/vers/_forever_/Interface/AddOns" }
+### Interface
+
+- **1 Installés** : chaque addon avec sa version et son état (à jour, ↑ nouvelle version, perso). `u` met à jour l'addon choisi, `U` tout, `r` revérifie, `a` ajoute, `d` supprime, `o` ouvre sa page, `l` bascule un addon perso entre lien et release.
+- **2 Rechercher** (`Tab`) : nom, description, auteur ; noms d'abord, puis par téléchargements. `Entrée` installe l'addon et ses dépendances, `R` rafraîchit le catalogue.
+
+### Addons perso : lien ou release
+
+Un addon qu'on développe est un lien dans AddOns vers son repo git, où qu'il soit : le jeu charge le code en cours. wam le montre en « perso (lien) », `wam update` ne le touche pas et `d` refuse de le supprimer.
+
+```bash
+# macOS / Linux
+$ ln -s ~/chemin/vers/MonAddon "<dossier AddOns>/MonAddon"
+# Windows (une jonction : ni droits admin ni mode développeur)
+> mklink /J "<dossier AddOns>\MonAddon" C:\chemin\vers\MonAddon
 ```
 
-**Premier lancement** : `wam` ouvre l'interface et vérifie les addons déjà là. Ceux installés à la main sont reconnus s'ils ont un numéro CurseForge dans leur `.toc` (la plupart) ; les autres s'affichent en « source inconnue » : les réinstaller avec `a` (ou `wam add`) pour qu'ils soient suivis. La première recherche construit le catalogue des addons Forever (~19 000, quelques minutes, une fois par semaine ensuite).
+`wam release <addon>` remplace le lien par la dernière release GitHub du repo (déduit du remote `origin`) ; l'addon est alors mis à jour comme les autres. `wam dev <addon>` remet le lien. La release attendue est un zip `<Addon>-X.Y.Z-forever.zip`, publié par exemple par un workflow GitHub sur un tag `vX.Y.Z`.
 
-## Utilisation
+## Tech stack 🤖
 
-```sh
-wam                        # l'interface
-wam check [addon…]         # versions et mises à jour disponibles
-wam update [addon…]        # met à jour ce qui est en retard (tout, ou les addons nommés)
-wam add <source…>          # lien CurseForge, numéro de projet ou owner/repo GitHub (+ dépendances)
-wam remove [-y] <addon…>   # supprime, après confirmation sauf avec -y
-wam search <mots…>         # catalogue Forever : numéro, nom, téléchargements, auteur
-wam catalog                # reconstruit le catalogue
-wam open <addon>           # ouvre la page de l'addon
-wam release <addon…>       # un de nos addons : lien -> dernière release GitHub
-wam dev <addon…>           # retour au lien vers le repo, pour travailler dessus
-wam key                    # enregistre la clé API CurseForge (saisie masquée)
-```
+- **Node.js ≥ 24**, ESM, rien de natif : `fetch`, `zlib` (extraction des zips), `tls` (certificats du système). Seules dépendances : [pngjs](https://www.npmjs.com/package/pngjs) et [jpeg-js](https://www.npmjs.com/package/jpeg-js) (~800 Ko, pur JS) pour décoder les logos.
+- Interface faite main : stdin brut, codes ANSI, écran alternatif, dégradé « retro » repris d'[azotui](https://github.com/Firnael/azotui), en 24 bits si `COLORTERM` le dit, sinon 256 couleurs.
+- Logos en demi-blocs colorés (`▀`, deux pixels par cellule, deux fois plus fin que les `██` d'azotui). PNG et JPEG ; les autres formats n'affichent pas de logo.
+- Optionnels : `git` (remote des addons perso), `gh` (token GitHub pour les repos privés).
 
-`<addon>` est le nom du dossier ou le titre, sans tenir compte de la casse. Chaque action de l'interface a sa commande ; `wam help` les liste.
+<details>
+<summary>Sources des addons</summary>
 
-Exemples : `wam search questie` puis `wam add 334372` ; `wam add https://www.curseforge.com/wow/addons/tomtom` ; `wam add Questie/QuestieDB` ; `wam update`, puis `/reload` en jeu.
+- **CurseForge**, par le numéro de projet du `.toc` (`## X-Curse-Project-ID`). La version retenue est la dernière stable qui annonce un client 1.60.x. Le téléchargement passe par l'API du site (`www.curseforge.com/api/v1/mods/<id>/files`), sans clé.
+- **Fiches, dépendances et catalogue** : API officielle (`api.curseforge.com`, en-tête `x-api-key`).
+- **Pourquoi un catalogue local** : `/v1/mods/search` répond 403 à ces clés (vérifié le 2026-11-24), alors que le reste de l'API répond. `POST /v1/mods/featured` (filtré sur Forever, `gameVersionTypeId` 88568) renvoie une vingtaine d'addons en sautant ceux de `excludedModIds` : en le rappelant avec tous les ids déjà vus, on parcourt toute la liste Forever. Le catalogue est construit au premier lancement, repris s'il a été interrompu, refait au bout d'une semaine.
+- **GitHub** : dernière release, fichier dont le nom contient « forever » et finit par `.zip` (ex. QuestieDB). Le token (`GITHUB_TOKEN`, `GH_TOKEN`, sinon `gh auth token`) donne accès aux repos privés.
+- Les addons dont le `.toc` n'a pas de numéro CurseForge sont listés dans `KNOWN` (`src/core.mjs`). Un addon installé depuis wam garde sa source dans l'état.
+</details>
 
-## Interface
+<details>
+<summary>Fichiers</summary>
 
-- **1 Installés** : chaque addon avec sa version et son état (à jour, ↑ nouvelle version, perso). `u` met à jour l'addon choisi, `U` tout, `r` revérifie, `l` bascule un de nos addons entre lien et release, `a` ajoute un addon (lien CurseForge, numéro de projet ou `owner/repo` GitHub), `d` supprime, `o` ouvre sa page.
-- **2 Rechercher** : recherche dans le catalogue local des addons Forever (nom, description, auteur), noms d'abord puis par téléchargements. `Entrée` installe l'addon et ses dépendances obligatoires, `R` rafraîchit le catalogue.
+Dans `~/.config/wam/` (Windows : `%USERPROFILE%\.config\wam`), ou `$WAM_HOME` :
 
-## Nos addons : lien ou release
-
-Nos addons (dans `~/git/perso/wow-addons`) sont des liens symboliques vers leur repo : le jeu charge le code en cours. `wam update` ne les touche pas et `d` refuse de les supprimer.
-
-`wam release <addon>` (ou `l` dans l'interface) remplace le lien par la dernière release GitHub du repo, déduit du remote `origin` de la cible du lien. L'addon est alors suivi et mis à jour comme les autres, et l'état garde la cible du lien (`link`). `wam dev <addon>` supprime le dossier installé et remet le lien. Si la release ne contient pas de dossier du nom de l'addon, le lien est remis en place.
-
-La release vient du workflow `.github/workflows/release.yml` de chaque addon : pousser un tag `vX.Y.Z` (égal au `## Version:` du `.toc`) publie `<Addon>-X.Y.Z-forever.zip`.
-
-## Sources
-
-- **CurseForge**, par le numéro de projet du `.toc` (`## X-Curse-Project-ID`). La version retenue est la dernière stable qui annonce un client 1.60.x. Le téléchargement passe par l'API du site (`www.curseforge.com/api/v1/mods/<id>/files`), qui ne demande pas de clé.
-- **Fiches, dépendances et catalogue** : API officielle (`api.curseforge.com`, en-tête `x-api-key`), avec la clé d'organisation de [console.curseforge.com](https://console.curseforge.com). Sans clé, tout marche sauf la recherche et l'installation automatique des dépendances.
-- **Pourquoi un catalogue local** : `/v1/mods/search` répond 403 à ces clés (vérifié le 2026-11-24, depuis le Mac et depuis le VPS), alors que le reste de l'API répond. `POST /v1/mods/featured` (filtré sur Forever, `gameVersionTypeId` 88568) renvoie une vingtaine d'addons en sautant ceux de `excludedModIds` : en le rappelant avec tous les ids déjà vus, on parcourt toute la liste Forever, des plus populaires aux moins populaires. Le catalogue est construit au premier lancement, repris s'il a été interrompu, refait au bout d'une semaine, et gardé dans `catalog.json`.
-- **GitHub** : dernière release, fichier dont le nom contient « forever » et finit par `.zip` (ex. QuestieDB). Le token (`GITHUB_TOKEN`, `GH_TOKEN`, sinon `gh auth token`) donne accès aux repos privés : le fichier est alors pris par l'API des assets. Sans token, seuls les repos publics marchent.
-- Les addons dont le `.toc` n'a pas de numéro CurseForge sont listés dans `KNOWN` (`src/core.mjs`). Un addon installé depuis `wam` garde sa source dans l'état.
-
-## Fichiers
-
-`~/.config/wam/` (ou `$WAM_HOME`) :
-
-- `config.json` : `addonsDir` (par défaut le dossier AddOns de `_forever_` sous `/Applications`) et `apiKey`. Droits `600`. La clé peut aussi venir de `CURSEFORGE_API_KEY`.
+- `config.json` : `addonsDir` et `apiKey` (droits `600`). La clé peut aussi venir de `CURSEFORGE_API_KEY`.
 - `catalog.json` : le catalogue des addons Forever (quelques Mo).
-- `logos/` : les logos déjà convertis (un fichier vide pour un addon sans logo).
-- `state.json` : pour chaque source, le fichier installé, ses dossiers, la date et, pour nos addons en release, la cible du lien. C'est lui qui dit si un addon est à jour ; sans trace, la version du `.toc` est comparée au nom du fichier en ligne.
+- `logos/` : les logos déjà convertis.
+- `state.json` : pour chaque source, le fichier installé, ses dossiers, la date et, pour les addons perso en release, la cible du lien. C'est lui qui dit si un addon est à jour ; sans trace, la version du `.toc` est comparée au nom du fichier en ligne.
+</details>
 
-## Code
+<details>
+<summary>Code</summary>
 
 - `bin/wam.mjs` : les commandes.
-- `src/core.mjs` : lecture du dossier AddOns, comparaison des versions, installation (dossier remplacé en bloc, ancien remis en place en cas d'échec), suppression.
-- `src/curse.mjs`, `src/github.mjs` : les sources.
-- `src/catalog.mjs` : le catalogue local et sa recherche.
-- `src/logo.mjs` : les logos du panneau de droite (logo CurseForge, sinon l'avatar du propriétaire GitHub), convertis par `sips` (macOS) en BMP de 96 px au plus, dessinés en demi-blocs colorés dans un carré fixe en haut du panneau (le plus grand qui laisse 10 lignes de texte, jusqu'à 96 px) et gardés dans `logos/`.
-- `src/tui.mjs` : l'interface (stdin brut, codes ANSI, écran alternatif), avec un écran d'accueil d'1,6 s (une touche le passe) et le dégradé « retro » d'azotui, en 24 bits si `COLORTERM` le dit, sinon en 256 couleurs.
+- `src/core.mjs` : lecture du dossier AddOns, versions, installation (dossier remplacé en bloc, ancien remis en place en cas d'échec), suppression.
+- `src/curse.mjs`, `src/github.mjs` : les sources. `src/catalog.mjs` : le catalogue et sa recherche.
+- `src/zip.mjs` : extraction des zips (stored / deflate).
+- `src/platform.mjs` : ce qui change selon l'OS (certificats, ouverture d'une page, liens, dossier par défaut).
+- `src/logo.mjs` : les logos (CurseForge, sinon l'avatar GitHub du propriétaire), décodés, réduits à 96 px au plus et dessinés dans un carré fixe en haut du panneau.
+- `src/tui.mjs` : l'interface, avec un écran d'accueil d'1,6 s (une touche le passe).
 
 Pour tester sans toucher au vrai dossier : `WAM_HOME=/tmp/w` avec un `config.json` dont `addonsDir` pointe ailleurs.
+</details>
+
+## TODO 📋
+
+- Tester en vrai sous Windows (jonctions, rendu dans Windows Terminal).
+- Une capture d'écran dans ce README.
 
 ## Licence
 
