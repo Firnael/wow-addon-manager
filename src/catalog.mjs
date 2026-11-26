@@ -38,7 +38,12 @@ export function build(onProgress = () => {}) {
     const next = { builtAt: resume ? cat.builtAt : new Date().toISOString(), complete: false, mods: [...found.values()] };
     for (let i = 0; i < MAX_CALLS; i++) {
       if (i && i % 20 === 0) await writeFile(FILE, JSON.stringify(cat?.complete ? cat : { ...next, mods: [...found.values()] }));
-      const d = await featured([...found.keys()]);
+      // A network hiccup (sleep, Wi-Fi change) retries; a lasting failure keeps what was saved.
+      let d;
+      for (let t = 1; !d; t++) {
+        try { d = await featured([...found.keys()]); }
+        catch (e) { if (t >= 4) throw e; await new Promise((r) => setTimeout(r, 2000 * t)); }
+      }
       let added = 0;
       for (const m of [...d.featured, ...d.popular, ...d.recentlyUpdated]) {
         if (found.has(m.id)) continue;
