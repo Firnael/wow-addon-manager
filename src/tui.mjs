@@ -243,7 +243,7 @@ function render() {
   const keys = ui.prompt ? (ui.prompt.confirm ? 'o oui · n non' : 'Entrée valider · Échap annuler')
     : ui.view === 'installed'
       ? '↑↓ choisir · u mettre à jour · U tout · r vérifier · a ajouter · d supprimer · l lien/release · o page · Tab recherche · q quitter'
-      : ui.search.input ? 'Entrée chercher · ↓ résultats · Tab installés · Échap quitter la saisie'
+      : ui.search.input ? `Entrée chercher · ↓ résultats · Tab installés · Échap ${ui.search.results.length ? 'quitter la saisie' : 'installés'}`
         : '↑↓ choisir · Entrée installer · o page · / nouvelle recherche · R rafraîchir le catalogue · Tab installés · q quitter';
   L.push(hints(keys, W));
   return L.slice(0, H);
@@ -313,7 +313,10 @@ function onKey(data) {
     if (s.input) {
       if (k === 'enter') runSearch();
       else if (k === 'back') s.query = s.query.slice(0, -1);
-      else if (k === 'esc' || k === 'down') { if (s.results.length) s.input = false; }
+      // Esc leaves the field (back to the installed tab when there is nothing to browse), and
+      // 1 on an empty field switches tab like it does everywhere else.
+      else if (k === 'esc' || k === 'down') { if (s.results.length) s.input = false; else if (k === 'esc') ui.view = 'installed'; }
+      else if (k === '1' && !s.query) ui.view = 'installed';
       else if (data >= ' ' && !data.startsWith('\x1b')) s.query += data;
       return draw();
     }
