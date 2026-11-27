@@ -59,9 +59,9 @@ async function plain(update, names) {
     try {
       const remote = await core.latest(a.source);
       if (core.upToDate(a, remote)) { console.log(`=  ${a.title} ${a.version ?? ''}${a.own ? ' (perso, release)' : ''}`); continue; }
-      behind++;
-      if (!update) { console.log(`↑  ${a.title} ${a.version ?? '?'} -> ${remote.name}`); continue; }
+      if (!update) { behind++; console.log(`↑  ${a.title} ${a.version ?? '?'} -> ${remote.name}`); continue; }
       const dirs = await core.install(a.source, remote, { title: a.title });
+      behind++; // counted once installed, so a failed update is not reported as done
       console.log(`✓  ${a.title} ${a.version ?? '?'} -> ${remote.name} (${dirs.join(', ')})`);
     } catch (e) {
       failed++;
