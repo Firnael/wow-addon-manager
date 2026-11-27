@@ -104,7 +104,7 @@ $ ln -s ~/chemin/vers/MonAddon "<dossier AddOns>/MonAddon"
 ## Tech stack 🤖
 
 - **Node.js ≥ 24**, ESM, rien de natif : `fetch`, `zlib` (extraction des zips), `tls` (certificats du système). Seules dépendances : [pngjs](https://www.npmjs.com/package/pngjs) et [jpeg-js](https://www.npmjs.com/package/jpeg-js) (~800 Ko, pur JS) pour décoder les logos.
-- Interface faite main : stdin brut, codes ANSI, écran alternatif, dégradé « retro » repris d'[azotui](https://github.com/Firnael/azotui), en 24 bits si `COLORTERM` le dit, sinon 256 couleurs.
+- Interface faite main : stdin brut, codes ANSI, écran alternatif, dégradé « retro » repris d'[azotui](https://github.com/Firnael/azotui), en 24 bits si le terminal le gère (`COLORTERM`, ou ce que Node détecte, Windows Terminal compris), sinon 256 couleurs.
 - Logos en demi-blocs colorés (`▀`, deux pixels par cellule, deux fois plus fin que les `██` d'azotui). PNG et JPEG ; les autres formats n'affichent pas de logo.
 - Optionnels : `git` (remote des addons perso), `gh` (token GitHub pour les repos privés).
 

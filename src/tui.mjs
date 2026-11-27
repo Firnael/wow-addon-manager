@@ -20,11 +20,15 @@ const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
 // ---- look ---------------------------------------------------------------------------------
 // The "retro" gradient (indigo -> pink -> gold), in 24-bit colour when the terminal says so,
-// else the nearest of the 256-colour cube.
-const TRUE = /truecolor|24bit/i.test(process.env.COLORTERM ?? '');
+// else the nearest of the 256-colour cube. Windows Terminal sets no COLORTERM, but Node's
+// getColorDepth knows it (and recent Windows consoles) to be 24-bit.
+const TRUE = /truecolor|24bit/i.test(process.env.COLORTERM ?? '')
+  || Boolean(process.stdout.isTTY && process.stdout.getColorDepth() >= 24);
 const RETRO = ['#3f51b1', '#5a55ae', '#7b5fac', '#8f6aae', '#a86aa4', '#cc6b8e', '#f18271', '#f3a469', '#f7c978']
   .map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
-const cube = ([r, g, b]) => 16 + 36 * Math.round(r / 51) + 6 * Math.round(g / 51) + Math.round(b / 51);
+// Nearest xterm cube level: the six levels are 0, 95, 135, 175, 215, 255, not evenly spaced.
+const level = (v) => (v < 48 ? 0 : v < 115 ? 1 : Math.min(5, Math.round((v - 55) / 40)));
+const cube = ([r, g, b]) => 16 + 36 * level(r) + 6 * level(g) + level(b);
 const fg = (rgb) => (TRUE ? `${ESC}38;2;${rgb.join(';')}m` : `${ESC}38;5;${cube(rgb)}m`);
 const bg = (rgb) => (TRUE ? `${ESC}48;2;${rgb.join(';')}m` : `${ESC}48;5;${cube(rgb)}m`);
 const RESET = `${ESC}0m`;
