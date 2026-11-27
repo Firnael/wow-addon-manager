@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { cp, lstat, mkdtemp, readdir, readFile, readlink, rename, rm, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { linkDir } from './platform.mjs';
 import { extract } from './zip.mjs';
 import * as curse from './curse.mjs';
@@ -105,6 +105,9 @@ async function isLink(path) {
 export async function install(src, remote, { title } = {}) {
   const { addonsDir } = config();
   const tmp = await mkdtemp(join(tmpdir(), 'wam-'));
+  // The old folders are set aside next to AddOns, not in tmp: rename cannot cross drives
+  // (EXDEV when AddOns is on F: and the temp folder on C:).
+  const bak = await mkdtemp(join(dirname(addonsDir), '.wam-'));
   try {
     const r = await fetch(remote.url, { headers: { 'user-agent': UA, ...remote.headers } });
     if (!r.ok) throw new Error(`téléchargement : HTTP ${r.status}`);
@@ -118,7 +121,7 @@ export async function install(src, remote, { title } = {}) {
       if (await isLink(join(addonsDir, d))) throw new Error(`${d} est un addon perso (lien), refusé`);
     }
     for (const d of dirs) {
-      const dest = join(addonsDir, d), old = join(tmp, `old-${d}`);
+      const dest = join(addonsDir, d), old = join(bak, d);
       if (existsSync(dest)) await rename(dest, old);
       try { await cp(join(out, d), dest, { recursive: true }); }
       catch (e) { await rm(dest, { recursive: true, force: true }); if (existsSync(old)) await rename(old, dest); throw e; }
@@ -130,6 +133,7 @@ export async function install(src, remote, { title } = {}) {
     return dirs;
   } finally {
     await rm(tmp, { recursive: true, force: true });
+    await rm(bak, { recursive: true, force: true });
   }
 }
 
