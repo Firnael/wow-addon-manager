@@ -34,9 +34,19 @@ export const linkDir = (target, path) => symlink(target, path, WIN ? 'junction' 
 // The AddOns folder of a default install, the first one found (else the most likely one).
 export function defaultAddonsDir() {
   const sub = join('World of Warcraft', '_forever_', 'Interface', 'AddOns');
-  const roots = WIN
-    ? [process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', process.env.ProgramFiles ?? 'C:\\Program Files', 'C:\\', 'D:\\']
-    : MAC ? ['/Applications'] : [join(homedir(), 'Games')];
+  const roots = WIN ? windowsRoots() : MAC ? ['/Applications'] : [join(homedir(), 'Games')];
   const dirs = roots.map((r) => join(r, sub));
   return dirs.find((d) => existsSync(d)) ?? dirs[0];
+}
+
+// Battle.net lets the game go on any drive: Program Files first, then the root and the usual
+// game folders of every drive letter that exists (C: to Z:).
+function windowsRoots() {
+  const roots = [process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)', process.env.ProgramFiles ?? 'C:\\Program Files'];
+  for (let c = 67; c <= 90; c++) {
+    const drive = `${String.fromCharCode(c)}:\\`;
+    if (!existsSync(drive)) continue;
+    for (const sub of ['', 'Program Files (x86)', 'Program Files', 'Games', 'Jeux', 'Battle.net']) roots.push(join(drive, sub));
+  }
+  return [...new Set(roots)];
 }

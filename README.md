@@ -47,7 +47,7 @@ $ npm link          # installe les dépendances, `wam` pointe sur ce dossier ; m
 
 ### Premier lancement
 
-1. **Dossier AddOns** : wam cherche `World of Warcraft/_forever_/Interface/AddOns` à l'endroit habituel (`/Applications` sur macOS ; `C:\Program Files (x86)`, `C:\Program Files`, `C:\` ou `D:\` sur Windows ; `~/Games` sur Linux). Vérifier avec `wam dir`. Si le jeu est ailleurs :
+1. **Dossier AddOns** : wam cherche `World of Warcraft/_forever_/Interface/AddOns` à l'endroit habituel (`/Applications` sur macOS ; `Program Files`, puis la racine, `Program Files`, `Games`, `Jeux` et `Battle.net` de chaque lecteur sur Windows ; `~/Games` sur Linux). Vérifier avec `wam dir`. Si le jeu est ailleurs :
 
    ```bash
    $ wam dir "D:\Jeux\World of Warcraft\_forever_\Interface\AddOns"
