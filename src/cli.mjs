@@ -14,6 +14,7 @@ const USAGE = `wam                        interface (sans argument)
 wam check [addon…]         versions et mises à jour disponibles
 wam update [addon…]        met à jour ce qui est en retard (tout, ou les addons nommés)
 wam add <source…>          installe : lien CurseForge, numéro de projet ou owner/repo GitHub
+wam adopt <projet…>        déjà installé et à jour (app CurseForge) : retient la source sans retélécharger
 wam remove [-y] <addon…>   supprime (demande confirmation sans -y)
 wam search <mots…>         cherche dans le catalogue Forever (clé requise)
 wam catalog                reconstruit le catalogue
@@ -98,6 +99,14 @@ async function add(sources) {
     catch (e) { process.exitCode = 1; console.log(`✗  ${src} : ${e.message}`); }
   }
   if (ok) console.log('/reload en jeu pour les charger.');
+}
+
+async function adopt(sources) {
+  if (!sources.length) throw new Error('wam adopt <lien CurseForge | numéro de projet>…');
+  for (const src of sources) {
+    try { const r = await core.adopt(src); console.log(`✓  ${r.title} : source retenue (${r.file} ; ${r.dirs.join(', ')})`); }
+    catch (e) { process.exitCode = 1; console.log(`✗  ${src} : ${e.message}`); }
+  }
 }
 
 function confirm(question) {
@@ -212,6 +221,7 @@ try {
   else if (cmd === 'check') await plain(false, args);
   else if (cmd === 'update') await plain(true, args);
   else if (cmd === 'add') await add(args);
+  else if (cmd === 'adopt') await adopt(args);
   else if (cmd === 'remove' || cmd === 'rm') await remove(args);
   else if (cmd === 'search') await search(args);
   else if (cmd === 'catalog') await ensureCatalog(true);

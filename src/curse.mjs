@@ -63,6 +63,12 @@ export async function mod(id) {
   return shape((await api(`/mods/${id}`)).data);
 }
 
+// Folder names a file's zip holds, as CurseForge lists them (no download).
+export async function fileFolders(id, fileId) {
+  const f = (await api(`/mods/${id}/files/${fileId}`)).data;
+  return (f.modules ?? []).map((m) => m.name);
+}
+
 // Project ids a file needs (relationType 3 = required). Empty without a key.
 export async function requiredDeps(id, fileId) {
   if (!hasKey()) return [];

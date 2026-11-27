@@ -279,6 +279,37 @@ export async function add(text, { onStep = () => {} } = {}) {
   throw new Error('format non reconnu : lien CurseForge, numéro de projet ou owner/repo GitHub');
 }
 
+// Records the CurseForge source of an addon already installed and up to date (by the
+// CurseForge app, say), without downloading it: worth it for the big audio packs. The
+// folders of the latest file must all be in AddOns, and those with a version at its version.
+export async function adopt(text) {
+  text = String(text ?? '').trim();
+  const cfSlug = text.match(/curseforge\.com\/wow\/addons\/([\w-]+)/)?.[1];
+  let id = text.match(/^\d+$/) ? Number(text) : Number(text.match(/curseforge\.com\/projects\/(\d+)/)?.[1]) || null;
+  if (!id && cfSlug) { await catalog.load(); id = catalog.bySlug(cfSlug)?.id ?? null; }
+  if (!id) throw new Error('numéro de projet ou lien CurseForge attendu');
+  const remote = await curse.latestFile(id);
+  const dirs = await curse.fileFolders(id, remote.fileId);
+  if (!dirs.length) throw new Error('CurseForge ne liste aucun dossier pour ce fichier');
+  const { addonsDir } = config();
+  let versioned = 0;
+  for (const d of dirs) {
+    if (await isLink(join(addonsDir, d))) throw new Error(`${d} est un addon perso (lien), refusé`);
+    const toc = await readToc(join(addonsDir, d));
+    if (!toc) throw new Error(`${d} absent de AddOns : l'installer avec wam add ${id}`);
+    if (!toc.version) continue;
+    versioned++;
+    if (!upToDate({ version: toc.version }, remote)) throw new Error(`${d} ${toc.version} n'est pas la dernière version (${remote.name}) : wam add ${id}`);
+  }
+  if (!versioned) throw new Error(`aucune version dans les .toc de ${dirs.join(', ')} : impossible de vérifier, wam add ${id}`);
+  const title = (await curse.mod(id).catch(() => null))?.name;
+  const state = await loadState();
+  const key = keyOf({ curse: id });
+  state[key] = { ref: remote.ref, file: remote.name, source: { curse: id }, dirs, title: title ?? state[key]?.title, link: state[key]?.link, at: new Date().toISOString().slice(0, 10) };
+  await saveState(state);
+  return { title: title ?? dirs[0], dirs, file: remote.name };
+}
+
 // An addon picked by folder name or title, case-insensitive.
 export const find = (addons, name) => addons.find((a) => [a.name, a.title].some((s) => s?.toLowerCase() === String(name).toLowerCase()));
 

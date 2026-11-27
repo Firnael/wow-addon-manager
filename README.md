@@ -70,6 +70,7 @@ $ wam                        # l'interface
 $ wam check [addon…]         # versions et mises à jour disponibles
 $ wam update [addon…]        # met à jour ce qui est en retard (tout, ou les addons nommés)
 $ wam add <source…>          # lien CurseForge, numéro de projet ou owner/repo GitHub (+ dépendances)
+$ wam adopt <projet…>        # déjà installé et à jour (app CurseForge) : retient la source sans retélécharger (clé requise)
 $ wam remove [-y] <addon…>   # supprime, après confirmation sauf avec -y
 $ wam search <mots…>         # catalogue Forever : numéro, nom, téléchargements, auteur
 $ wam catalog                # reconstruit le catalogue
